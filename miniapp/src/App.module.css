@@ -1,0 +1,11 @@
+.container { max-width: 800px; margin: 0 auto; padding: 16px; }
+.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.title { font-size: 1.3rem; font-weight: 700; }
+.refreshBtn {
+  padding: 6px 14px; border-radius: 8px; border: none;
+  background: var(--tg-theme-button-color, #0088cc);
+  color: var(--tg-theme-button-text-color, #fff);
+  cursor: pointer; font-size: 1.1rem;
+}
+.error { color: #e53e3e; padding: 12px; }
+.loading { padding: 12px; color: #888; }

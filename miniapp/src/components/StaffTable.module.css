@@ -1,0 +1,14 @@
+.wrapper { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.table th, .table td {
+  padding: 10px 12px; text-align: left;
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+.table th { font-weight: 600; background: var(--tg-theme-secondary-bg-color, #f5f5f5); }
+.inactive { opacity: .5; }
+.editBtn {
+  padding: 4px 12px; border-radius: 6px; border: none;
+  background: var(--tg-theme-button-color, #0088cc);
+  color: var(--tg-theme-button-text-color, #fff);
+  cursor: pointer; font-size: .85rem;
+}
