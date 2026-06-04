@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+import json
+from urllib.parse import parse_qs, unquote
+
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import StaffCreate, StaffOut, StaffUpdate
@@ -12,6 +15,31 @@ from app.db.crud import (
 )
 
 router = APIRouter(prefix="/api/staff", tags=["staff"])
+
+
+def _telegram_id_from_init_data(init_data: str) -> int | None:
+    """Parse telegram user id from Telegram WebApp initData string."""
+    try:
+        params = dict(pair.split("=", 1) for pair in init_data.split("&") if "=" in pair)
+        user = json.loads(unquote(params.get("user", "{}")))
+        uid = user.get("id")
+        return int(uid) if uid else None
+    except Exception:
+        return None
+
+
+@router.get("/me", response_model=StaffOut)
+async def get_staff_me(
+    x_telegram_init_data: str = Header(default=""),
+    session: AsyncSession = Depends(get_session),
+):
+    telegram_id = _telegram_id_from_init_data(x_telegram_init_data)
+    if not telegram_id:
+        raise HTTPException(status_code=401, detail="Invalid initData")
+    staff = await get_staff_by_telegram_id(session, telegram_id)
+    if not staff:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден")
+    return staff
 
 
 @router.get("", response_model=list[StaffOut])

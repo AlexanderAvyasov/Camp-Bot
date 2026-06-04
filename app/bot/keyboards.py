@@ -424,7 +424,8 @@ def task_action_kb(task_id: int, status: TaskStatus, is_assignee: bool) -> Inlin
 def task_admin_action_kb(task_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="⏸ Пауза", callback_data=f"task_pause_start:{task_id}"),
+            [InlineKeyboardButton(text="📷 Фото", callback_data=f"task_add_photo:{task_id}"),
+             InlineKeyboardButton(text="⏸ Пауза", callback_data=f"task_pause_start:{task_id}"),
              InlineKeyboardButton(text="🗑 Удалить", callback_data=f"task_del_confirm:{task_id}")],
         ]
     )

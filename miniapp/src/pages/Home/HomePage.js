@@ -57,8 +57,9 @@ export default function HomePage({ staff }) {
   const load = useCallback((isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     const taskParams = isAdmin ? {} : { assigned_to: staff?.id };
+    const today = new Date().toISOString().slice(0, 10);
     Promise.all([
-      eventsApi.list(),
+      eventsApi.list({ date: today }),
       tasksApi.list(taskParams),
       announcementsApi.list(),
     ])

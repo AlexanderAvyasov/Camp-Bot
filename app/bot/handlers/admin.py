@@ -179,6 +179,19 @@ async def fsm_get_role(callback: CallbackQuery, state: FSMContext, staff: Staff 
         if staff:
             await log_action(session, staff.id, "add_staff", new_staff.id)
 
+    # F02: отправить онбординг новому сотруднику
+    try:
+        from app.bot.bot import get_bot
+        await get_bot().send_message(
+            telegram_id,
+            f"👋 Вас добавили в систему лагеря!\n\n"
+            f"Ваша роль: <b>{ROLE_LABELS[role]}</b>\n\n"
+            f"Нажмите /start для начала работы.",
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
+
     await callback.message.edit_text(
         f"✅ Сотрудник добавлен!\n\n"
         f"👤 <b>{full_name}</b>\n"

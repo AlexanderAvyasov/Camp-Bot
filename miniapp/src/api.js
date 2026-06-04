@@ -17,6 +17,7 @@ const api = {
 };
 
 export const staffApi = {
+  me: () => api.get('/api/staff/me'),
   list: () => api.get('/api/staff'),
   get: (id) => api.get(`/api/staff/${id}`),
   create: (data) => api.post('/api/staff', data),

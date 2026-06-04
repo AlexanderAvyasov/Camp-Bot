@@ -7,16 +7,13 @@ export function useAuth() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-    if (!tgUser) {
+    const initData = window.Telegram?.WebApp?.initData;
+    if (!initData) {
       setLoading(false);
       return;
     }
-    staffApi.list()
-      .then(data => {
-        const me = (data.items || data).find(s => s.telegram_id === tgUser.id);
-        setStaff(me || null);
-      })
+    staffApi.me()
+      .then(data => setStaff(data || null))
       .catch(err => setError(err))
       .finally(() => setLoading(false));
   }, []);

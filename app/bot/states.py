@@ -127,3 +127,7 @@ class TaskPauseFSM(StatesGroup):
 class ChildrenImportFSM(StatesGroup):
     waiting_squad = State()
     waiting_file = State()
+
+
+class TaskPhotoFSM(StatesGroup):
+    waiting_photo = State()

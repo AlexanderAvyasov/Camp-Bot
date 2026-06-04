@@ -187,7 +187,44 @@ async def cmd_incidents_today(message: Message, staff: Staff | None = None):
     await message.answer("\n\n".join(lines), parse_mode="HTML")
 
 
-# ── /incidents_all — журнал инцидентов ────────────────────────────────────────
+# ── /incidents_all — журнал инцидентов с пагинацией ──────────────────────────
+
+_INC_PAGE = 10
+
+
+def _incidents_page_kb(page: int, has_next: bool) -> InlineKeyboardMarkup:
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"incidents_page:{page - 1}"))
+    if has_next:
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"incidents_page:{page + 1}"))
+    return InlineKeyboardMarkup(inline_keyboard=[nav]) if nav else InlineKeyboardMarkup(inline_keyboard=[])
+
+
+async def _send_incidents_page(target, sess_id, page: int):
+    offset = page * _INC_PAGE
+    async with async_session_factory() as session:
+        incidents = await get_incidents_all(session, session_id=sess_id, offset=offset, limit=_INC_PAGE + 1)
+    has_next = len(incidents) > _INC_PAGE
+    incidents = incidents[:_INC_PAGE]
+    if not incidents:
+        text = "📋 Журнал инцидентов пуст."
+        kb = None
+    else:
+        lines = [f"📋 <b>Инциденты (стр. {page + 1}):</b>\n"]
+        for inc in incidents:
+            lines.append(_format_incident(inc))
+        text = "\n\n".join(lines)
+        kb = _incidents_page_kb(page, has_next)
+    if isinstance(target, Message):
+        await target.answer(text, parse_mode="HTML", reply_markup=kb)
+    else:
+        try:
+            await target.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            await target.message.answer(text, parse_mode="HTML", reply_markup=kb)
+        await target.answer()
+
 
 @router.message(Command("incidents_all"))
 async def cmd_incidents_all(message: Message, staff: Staff | None = None):
@@ -195,11 +232,15 @@ async def cmd_incidents_all(message: Message, staff: Staff | None = None):
         return
     async with async_session_factory() as session:
         sess = await get_active_session(session)
-        incidents = await get_incidents_all(session, session_id=sess.id if sess else None, limit=20)
-    if not incidents:
-        await message.answer("📋 Журнал инцидентов пуст.")
+    await _send_incidents_page(message, sess.id if sess else None, 0)
+
+
+@router.callback_query(F.data.startswith("incidents_page:"))
+async def cb_incidents_page(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None or staff.role not in _ADMIN_ROLES:
+        await callback.answer("⛔ Нет прав", show_alert=True)
         return
-    lines = [f"📋 <b>Журнал инцидентов (последние 20):</b>\n"]
-    for inc in incidents:
-        lines.append(_format_incident(inc))
-    await message.answer("\n\n".join(lines), parse_mode="HTML")
+    page = int(callback.data.split(":")[1])
+    async with async_session_factory() as session:
+        sess = await get_active_session(session)
+    await _send_incidents_page(callback, sess.id if sess else None, page)

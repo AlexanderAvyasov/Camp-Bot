@@ -19,10 +19,12 @@ from app.bot.keyboards import (
     confirm_kb,
     role_menu,
 )
-from app.bot.states import TaskCreateFSM, TaskFromTemplateFSM, TemplateFSM, TaskPauseFSM
+from app.bot.states import TaskCreateFSM, TaskFromTemplateFSM, TemplateFSM, TaskPauseFSM, TaskPhotoFSM
 from app.db.base import async_session_factory
 from app.db.crud import (
     add_task_log,
+    add_task_photo,
+    create_reminder,
     create_task,
     create_template,
     get_all_tasks,
@@ -32,6 +34,7 @@ from app.db.crud import (
     get_task_by_id,
     get_tasks_for_staff,
     get_template_by_id,
+    log_action,
     update_task,
     update_task_status,
 )
@@ -181,26 +184,48 @@ async def _finish_task_creation(message: Message, state: FSMContext, staff: Staf
             priority=priority,
             deadline=deadline,
         )
+        if staff:
+            await log_action(session, staff.id, "create_task", task.id)
 
     await state.clear()
 
-    # Уведомить исполнителя
+    from app.bot.bot import get_bot
+    bot = get_bot()
+    notif = (
+        f"📋 Вам назначена задача: <b>{task.title}</b>\n"
+        f"Приоритет: {PRIORITY_LABELS[priority]}\n"
+        f"Дедлайн: {task.deadline.strftime(_DT_FMT) if task.deadline else '—'}"
+    )
+
+    # F08: уведомить конкретного исполнителя или всю группу
     if assigned_to:
         async with async_session_factory() as session:
             assignee = await get_staff_by_id(session, assigned_to)
         if assignee and assignee.telegram_id:
             try:
-                from app.bot.bot import get_bot
-                bot = get_bot()
-                await bot.send_message(
-                    assignee.telegram_id,
-                    f"📋 Вам назначена задача: <b>{task.title}</b>\n"
-                    f"Приоритет: {PRIORITY_LABELS[priority]}\n"
-                    f"Дедлайн: {task.deadline.strftime(_DT_FMT) if task.deadline else '—'}",
-                    parse_mode="HTML",
-                )
+                await bot.send_message(assignee.telegram_id, notif, parse_mode="HTML")
             except Exception:
                 pass
+    elif group_role:
+        async with async_session_factory() as session:
+            group_staff = await get_staff_by_role(session, group_role)
+        for member in group_staff:
+            if member.telegram_id:
+                try:
+                    await bot.send_message(member.telegram_id, notif, parse_mode="HTML")
+                except Exception:
+                    pass
+
+    # F37: создать напоминание за 1 час до дедлайна
+    if deadline and assigned_to:
+        remind_at = deadline - timedelta(hours=1)
+        if remind_at > datetime.now(tz=timezone.utc):
+            async with async_session_factory() as session:
+                await create_reminder(
+                    session, assigned_to, remind_at,
+                    f"⏰ Дедлайн задачи через час: {task.title}",
+                    task_id=task.id,
+                )
 
     await message.answer(
         f"✅ Задача создана!\n\n{_task_text(task)}",
@@ -770,3 +795,38 @@ async def fsm_pause_days(message: Message, state: FSMContext, staff: Staff | Non
         )
     else:
         await message.answer("❌ Задача не найдена.")
+
+
+# ── F13/F60: прикрепить фото к задаче ────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("task_add_photo:"))
+async def cb_task_add_photo(callback: CallbackQuery, state: FSMContext, staff: Staff | None = None):
+    if staff is None or staff.role not in _ADMIN_ROLES:
+        await callback.answer("⛔ Нет прав", show_alert=True)
+        return
+    task_id = int(callback.data.split(":")[1])
+    await state.update_data(photo_task_id=task_id)
+    await state.set_state(TaskPhotoFSM.waiting_photo)
+    await callback.message.answer(
+        "📷 Отправьте фото для прикрепления к задаче (или /cancel для отмены):"
+    )
+    await callback.answer()
+
+
+@router.message(TaskPhotoFSM.waiting_photo, F.photo)
+async def fsm_task_photo(message: Message, state: FSMContext, staff: Staff | None = None):
+    data = await state.get_data()
+    task_id = data.get("photo_task_id")
+    if not task_id:
+        await state.clear()
+        return
+    photo_file_id = message.photo[-1].file_id
+    async with async_session_factory() as session:
+        await add_task_photo(session, task_id, photo_file_id)
+    await state.clear()
+    await message.answer(f"✅ Фото прикреплено к задаче #{task_id}.")
+
+
+@router.message(TaskPhotoFSM.waiting_photo)
+async def fsm_task_photo_invalid(message: Message, state: FSMContext):
+    await message.answer("❌ Нужна фотография. Отправьте фото или введите /cancel.")
