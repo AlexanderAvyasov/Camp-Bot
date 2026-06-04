@@ -6,7 +6,7 @@ from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db.base import Base
-from app.db.models import ActionLog, Squad, Staff  # noqa: F401 — register models
+from app.db.models import ActionLog, DaySchedule, Session, Squad, Staff, Task, TaskLog, TaskPhoto, TaskTemplate  # noqa: F401 — register models
 
 config = context.config
 
@@ -15,7 +15,8 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-DATABASE_URL = os.environ.get("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+_raw_url = os.environ.get("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+DATABASE_URL = _raw_url.replace("postgresql://", "postgresql+asyncpg://").replace("postgres://", "postgresql+asyncpg://")
 
 
 def run_migrations_offline():

@@ -42,6 +42,15 @@ async def _show_main_menu(message: Message, staff: Staff):
         await message.answer(text, reply_markup=staff_reply_menu(), parse_mode="HTML")
 
 
+async def _show_main_menu(message: Message, staff: Staff):
+    role_label = ROLE_LABELS.get(staff.role, str(staff.role))
+    text = f"Привет, <b>{staff.full_name}</b>!\nВаша роль: {role_label}"
+    if staff.role == StaffRole.admin:
+        await message.answer(text, reply_markup=admin_reply_menu(), parse_mode="HTML")
+    else:
+        await message.answer(text, reply_markup=staff_reply_menu(), parse_mode="HTML")
+
+
 @router.message(CommandStart())
 async def cmd_start(message: Message, staff: Staff | None = None):
     if staff is None:
