@@ -75,6 +75,7 @@ body {
   overflow-x: hidden;
   min-width: 320px;
   line-height: 1.5;
+  color-scheme: light; /* Force light mode — disables browser/Telegram dark overrides */
 }
 
 .app {

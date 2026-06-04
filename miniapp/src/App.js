@@ -60,9 +60,8 @@ export default function App() {
   const { staff, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    if (tg?.colorScheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    }
+    // Force light theme — remove any system/Telegram dark mode class
+    document.documentElement.classList.remove('dark');
   }, []);
 
   const tabs = getTabsForRole(staff?.role);
