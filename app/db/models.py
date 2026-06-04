@@ -1,15 +1,17 @@
 import enum
-from datetime import datetime
+from datetime import date, datetime, time
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
     Integer,
     String,
     Text,
+    Time,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -100,3 +102,43 @@ class ActionLog(Base):
     actor: Mapped["Staff"] = relationship(
         "Staff", foreign_keys=[actor_id], back_populates="action_logs", lazy="selectin"
     )
+
+
+class DayType(str, enum.Enum):
+    weekday = "weekday"
+    weekend = "weekend"
+
+
+DAY_TYPE_LABELS = {
+    DayType.weekday: "Будний день",
+    DayType.weekend: "Выходной день",
+}
+
+
+class Session(Base):
+    __tablename__ = "sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    schedule: Mapped[list["DaySchedule"]] = relationship(
+        "DaySchedule", back_populates="session", lazy="selectin", cascade="all, delete-orphan"
+    )
+
+
+class DaySchedule(Base):
+    __tablename__ = "day_schedule"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(Integer, ForeignKey("sessions.id"), nullable=False)
+    day_type: Mapped[DayType] = mapped_column(Enum(DayType), nullable=False)
+    time: Mapped[time] = mapped_column(Time, nullable=False)
+    label: Mapped[str] = mapped_column(String(300), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    session: Mapped["Session"] = relationship("Session", back_populates="schedule", lazy="noload")

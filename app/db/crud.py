@@ -1,7 +1,9 @@
+from datetime import date, time
+
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ActionLog, Squad, Staff, StaffRole
+from app.db.models import ActionLog, DaySchedule, DayType, Session, Squad, Staff, StaffRole
 
 
 # --- Staff ---
@@ -87,6 +89,81 @@ async def create_squad(session: AsyncSession, name: str) -> Squad:
     await session.commit()
     await session.refresh(squad)
     return squad
+
+
+# --- Sessions ---
+
+async def get_all_sessions(session: AsyncSession) -> list[Session]:
+    result = await session.execute(select(Session).order_by(Session.start_date.desc()))
+    return list(result.scalars().all())
+
+
+async def get_session_by_id(session: AsyncSession, session_id: int) -> Session | None:
+    result = await session.execute(select(Session).where(Session.id == session_id))
+    return result.scalar_one_or_none()
+
+
+async def get_active_session(session: AsyncSession) -> Session | None:
+    result = await session.execute(select(Session).where(Session.is_active == True))
+    return result.scalar_one_or_none()
+
+
+async def create_session(
+    session: AsyncSession, name: str, start_date: date, end_date: date
+) -> Session:
+    obj = Session(name=name, start_date=start_date, end_date=end_date, is_active=False)
+    session.add(obj)
+    await session.commit()
+    await session.refresh(obj)
+    return obj
+
+
+async def activate_session(session: AsyncSession, session_id: int) -> Session | None:
+    await session.execute(update(Session).values(is_active=False))
+    await session.execute(update(Session).where(Session.id == session_id).values(is_active=True))
+    await session.commit()
+    return await get_session_by_id(session, session_id)
+
+
+# --- Day schedule ---
+
+async def get_schedule(session: AsyncSession, session_id: int) -> list[DaySchedule]:
+    result = await session.execute(
+        select(DaySchedule)
+        .where(DaySchedule.session_id == session_id)
+        .order_by(DaySchedule.day_type, DaySchedule.time)
+    )
+    return list(result.scalars().all())
+
+
+async def add_schedule_item(
+    session: AsyncSession,
+    session_id: int,
+    day_type: DayType,
+    time_val: time,
+    label: str,
+) -> DaySchedule:
+    item = DaySchedule(session_id=session_id, day_type=day_type, time=time_val, label=label)
+    session.add(item)
+    await session.commit()
+    await session.refresh(item)
+    return item
+
+
+async def copy_schedule(
+    session: AsyncSession, to_session_id: int, from_session_id: int
+) -> int:
+    items = await get_schedule(session, from_session_id)
+    for item in items:
+        new_item = DaySchedule(
+            session_id=to_session_id,
+            day_type=item.day_type,
+            time=item.time,
+            label=item.label,
+        )
+        session.add(new_item)
+    await session.commit()
+    return len(items)
 
 
 # --- Action logs ---

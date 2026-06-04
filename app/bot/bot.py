@@ -6,7 +6,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from app.bot.handlers import admin, start
+from app.bot.handlers import admin, sessions, start
 from app.bot.middleware import StaffMiddleware
 from app.config import settings
 
@@ -26,6 +26,7 @@ async def main():
 
     dp.include_router(start.router)
     dp.include_router(admin.router)
+    dp.include_router(sessions.router)
 
     logger.info("Starting bot...")
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

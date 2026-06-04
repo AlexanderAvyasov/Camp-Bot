@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime, time
 
 from pydantic import BaseModel, ConfigDict
 
-from app.db.models import StaffRole
+from app.db.models import DayType, StaffRole
 
 
 class SquadOut(BaseModel):
@@ -34,3 +34,34 @@ class StaffUpdate(BaseModel):
     role: StaffRole | None = None
     squad_id: int | None = None
     is_active: bool | None = None
+
+
+class SessionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    start_date: date
+    end_date: date
+    is_active: bool
+
+
+class SessionCreate(BaseModel):
+    name: str
+    start_date: date
+    end_date: date
+
+
+class DayScheduleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    session_id: int
+    day_type: DayType
+    time: time
+    label: str
+    created_at: datetime
+
+
+class DayScheduleCreate(BaseModel):
+    day_type: DayType
+    time: time
+    label: str
