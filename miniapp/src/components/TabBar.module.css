@@ -1,15 +1,17 @@
+/* Frosted-glass navigation */
 .tabBar {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  bottom: 0; left: 0; right: 0;
+  z-index: 100;
   height: calc(var(--tab-height) + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  background: var(--color-surface);
-  border-top: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+  box-shadow: 0 -1px 0 rgba(0,0,0,0.04), 0 -8px 24px rgba(0,0,0,0.04);
   display: flex;
   align-items: stretch;
-  z-index: 100;
 }
 
 .tab {
@@ -18,12 +20,36 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
   background: none;
-  color: var(--color-text-secondary);
-  transition: color 150ms ease;
-  padding: 4px 2px;
-  min-height: 44px;
+  color: var(--color-text-tertiary, #9CA3AF);
+  min-height: unset;
+  padding: 6px 4px 4px;
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Animated top-pill indicator */
+.tab::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 24px;
+  height: 3px;
+  background: var(--color-primary);
+  border-radius: 0 0 4px 4px;
+  transform: translateX(-50%) scaleX(0);
+  opacity: 0;
+  transition: transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform, opacity;
+}
+
+.tab.active::before {
+  transform: translateX(-50%) scaleX(1);
+  opacity: 1;
 }
 
 .tab.active {
@@ -31,12 +57,20 @@
 }
 
 .icon {
-  font-size: 20px;
+  font-size: 21px;
   line-height: 1;
+  display: block;
+  transition: transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform;
+}
+
+.tab.active .icon {
+  transform: scale(1.1) translateY(-1px);
 }
 
 .label {
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   white-space: nowrap;
 }

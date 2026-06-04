@@ -1,15 +1,24 @@
 .card {
   background: var(--color-surface);
   border-radius: var(--radius-md);
-  padding: 16px;
-  box-shadow: var(--shadow-sm);
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
+  transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .clickable {
   cursor: pointer;
-  transition: box-shadow 150ms ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.clickable:hover, .clickable:active {
-  box-shadow: var(--shadow-md);
+.clickable:hover {
+  border-color: var(--color-border-strong, #D1D5DB);
+  box-shadow: var(--shadow-sm);
+}
+
+.clickable:active {
+  transform: scale(0.99);
+  box-shadow: var(--shadow-xs);
 }

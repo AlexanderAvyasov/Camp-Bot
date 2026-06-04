@@ -1,7 +1,7 @@
 .page {
   max-width: 600px;
   margin: 0 auto;
-  padding: 16px 16px calc(var(--tab-height) + 16px);
+  padding: 20px 16px calc(var(--tab-height) + 24px);
   position: relative;
 }
 
@@ -11,57 +11,62 @@
 }
 
 .title {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--color-text);
+  letter-spacing: -0.02em;
 }
 
-/* ── Filter tabs ── */
+/* ── Filter chips ── */
 .filters {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   overflow-x: auto;
-  padding-bottom: 4px;
+  padding-bottom: 2px;
   margin-bottom: 16px;
-  scrollbar-width: none;
   -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
-.filters::-webkit-scrollbar {
-  display: none;
-}
+.filters::-webkit-scrollbar { display: none; }
 
 .filterTab {
   flex-shrink: 0;
-  padding: 6px 14px;
-  border-radius: 20px;
+  padding: 5px 13px;
+  border-radius: var(--radius-full);
   background: var(--color-surface);
   border: 1.5px solid var(--color-border);
   font-size: 13px;
   font-weight: 500;
   color: var(--color-text-secondary);
   min-height: unset;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .filterTab.active {
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: #fff;
+  font-weight: 600;
+}
+
+.filterTab:not(.active):hover {
+  border-color: var(--color-border-strong, #D1D5DB);
 }
 
 /* ── Task list ── */
 .list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 /* ── Task card ── */
 .taskCard {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 9px;
 }
 
 .taskTop {
@@ -72,9 +77,10 @@
 }
 
 .taskId {
-  font-size: 12px;
-  color: var(--color-text-secondary);
+  font-size: 11px;
+  color: var(--color-text-tertiary, #9CA3AF);
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
 .taskTitle {
@@ -99,12 +105,13 @@
 .deadline {
   font-size: 12px;
   color: var(--color-text-secondary);
+  font-weight: 500;
 }
 
 /* ── FAB ── */
 .fab {
   position: fixed;
-  bottom: calc(var(--tab-height) + 16px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(var(--tab-height) + 20px + env(safe-area-inset-bottom, 0px));
   right: 20px;
   width: 52px;
   height: 52px;
@@ -112,16 +119,21 @@
   border-radius: 50%;
   background: var(--color-primary);
   color: #fff;
-  font-size: 22px;
+  font-size: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow-md);
-  transition: transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35), 0 2px 4px rgba(37, 99, 235, 0.2);
+  transition: transform 150ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 150ms ease;
   z-index: 100;
 }
 
+.fab:hover {
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4), 0 4px 8px rgba(37, 99, 235, 0.25);
+}
+
 .fab:active {
-  transform: scale(0.93);
-  box-shadow: var(--shadow-sm);
+  transform: scale(0.9);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
 }
