@@ -30,12 +30,6 @@ async def _get_admin_telegram_ids() -> list[int]:
         return [s.telegram_id for s in all_staff if s.role == StaffRole.admin]
 
 
-async def _get_admin_telegram_ids() -> list[int]:
-    async with async_session_factory() as session:
-        all_staff = await get_all_active_staff(session)
-        return [s.telegram_id for s in all_staff if s.role == StaffRole.admin]
-
-
 async def main():
     global _bot_instance
     bot = Bot(

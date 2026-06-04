@@ -10,9 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from app.db.models import (
     PRIORITY_LABELS,
     ROLE_LABELS,
-    Staff,
     StaffRole,
-    Task,
     TaskPriority,
     TaskStatus,
 )
@@ -93,69 +91,6 @@ def staff_actions_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="➕ Добавить сотрудника", callback_data="add_staff")],
         ]
     )
-
-
-# ── Постоянное меню снизу ─────────────────────────────────────────────────────
-
-def admin_reply_menu() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="👥 Сотрудники"), KeyboardButton(text="🏕 Смены")],
-            [KeyboardButton(text="🏕 Отряды"), KeyboardButton(text="📅 Расписание")],
-            [KeyboardButton(text="✅ Задачи"), KeyboardButton(text="👤 Мой профиль")],
-        ],
-        resize_keyboard=True,
-        persistent=True,
-    )
-
-
-def tasks_admin_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📋 Все задачи", callback_data="tasks_all_btn")],
-            [InlineKeyboardButton(text="⚠️ Просроченные", callback_data="tasks_pending_btn")],
-            [InlineKeyboardButton(text="📝 Шаблоны", callback_data="templates_list_btn")],
-        ]
-    )
-
-
-def tasks_staff_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📋 Мои задачи", callback_data="mytasks_btn")],
-        ]
-    )
-
-
-def squads_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📋 Список отрядов", callback_data="squad_list")],
-            [InlineKeyboardButton(text="➕ Новый отряд", callback_data="squad_new")],
-            [InlineKeyboardButton(text="🔍 Найти замену", callback_data="find_replacement")],
-        ]
-    )
-
-
-def staff_reply_menu() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="✅ Задачи"), KeyboardButton(text="📅 Расписание")],
-            [KeyboardButton(text="👤 Мой профиль")],
-        ],
-        resize_keyboard=True,
-        persistent=True,
-    )
-
-
-def remove_reply_menu() -> ReplyKeyboardRemove:
-    return ReplyKeyboardRemove()
-
-
-# ── Inline-клавиатуры ─────────────────────────────────────────────────────────
-
-def back_button(callback_data: str = "main_menu") -> list[InlineKeyboardButton]:
-    return [InlineKeyboardButton(text="◀️ Назад", callback_data=callback_data)]
 
 
 def role_menu(prefix: str = "set_role") -> InlineKeyboardMarkup:
@@ -303,7 +238,6 @@ def tasks_staff_menu() -> InlineKeyboardMarkup:
 
 
 def task_group_kb() -> InlineKeyboardMarkup:
-    """Шаг 1: выбор группы (роли) при создании задачи."""
     builder = InlineKeyboardBuilder()
     for role in StaffRole:
         if role != StaffRole.admin:
@@ -314,17 +248,10 @@ def task_group_kb() -> InlineKeyboardMarkup:
 
 
 def task_assignee_kb(staff_list: list, role_value: str) -> InlineKeyboardMarkup:
-    """Шаг 2: выбор конкретного человека или всей группы."""
     builder = InlineKeyboardBuilder()
-    builder.button(
-        text="👥 Для всей группы",
-        callback_data=f"task_assignee:group:{role_value}",
-    )
+    builder.button(text="👥 Для всей группы", callback_data=f"task_assignee:group:{role_value}")
     for s in staff_list:
-        builder.button(
-            text=f"👤 {s.full_name}",
-            callback_data=f"task_assignee:{s.id}:{role_value}",
-        )
+        builder.button(text=f"👤 {s.full_name}", callback_data=f"task_assignee:{s.id}:{role_value}")
     builder.adjust(1)
     builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="task_create"))
     return builder.as_markup()

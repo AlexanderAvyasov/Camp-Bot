@@ -1,6 +1,6 @@
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, Message
 
 from app.bot.keyboards import (
     cancel_kb,
@@ -28,222 +28,6 @@ router = Router(name="admin")
 
 PAGE_SIZE = 5
 _ADMIN_ROLES = {StaffRole.admin}
-
-_cancel_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm")]]
-)
-
-
-# --- Navigation callbacks ---
-
-@router.callback_query(F.data == "cancel_fsm")
-async def cb_cancel_fsm(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
-    await callback.message.edit_text("❌ Действие отменено.")
-    await callback.answer()
-
-
-@router.callback_query(F.data == "mytasks_btn")
-async def cb_mytasks_btn(callback: CallbackQuery, staff: Staff | None = None):
-    if staff is None:
-        await callback.answer()
-        return
-    from app.db.crud import get_tasks_for_staff
-    from app.db.models import STATUS_LABELS, PRIORITY_LABELS
-    async with async_session_factory() as session:
-        tasks = await get_tasks_for_staff(session, staff.id)
-    if not tasks:
-        await callback.message.edit_text("✅ У вас нет активных задач.")
-        await callback.answer()
-        return
-    lines = [f"📋 <b>Ваши задачи</b> ({len(tasks)}):\n"]
-    for t in tasks:
-        dl = t.deadline.strftime("%d.%m.%Y %H:%M") if t.deadline else "—"
-        lines.append(f"• <b>{t.title}</b> (ID: {t.id})\n  {STATUS_LABELS[t.status]} | до {dl}")
-    await callback.message.edit_text(
-        "\n\n".join(lines),
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Обновить", callback_data="mytasks_btn")]
-        ]),
-        parse_mode="HTML",
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data == "tasks_all_btn")
-async def cb_tasks_all_btn(callback: CallbackQuery, staff: Staff | None = None):
-    if staff is None or staff.role.value not in ("admin", "senior_counselor"):
-        await callback.answer("⛔ Нет прав", show_alert=True)
-        return
-    from app.db.crud import get_all_tasks
-    from app.db.models import STATUS_LABELS, PRIORITY_LABELS
-    async with async_session_factory() as session:
-        tasks, total = await get_all_tasks(session, limit=10)
-    lines = [f"📋 <b>Все задачи</b> ({total}):\n"]
-    for t in tasks:
-        dl = t.deadline.strftime("%d.%m.%Y %H:%M") if t.deadline else "—"
-        assignee = t.assignee.full_name if t.assignee else "—"
-        lines.append(f"• <b>{t.title}</b> (ID: {t.id})\n  {STATUS_LABELS[t.status]} | {assignee} | до {dl}")
-    await callback.message.edit_text("\n\n".join(lines), parse_mode="HTML")
-    await callback.answer()
-
-
-@router.callback_query(F.data == "tasks_pending_btn")
-async def cb_tasks_pending_btn(callback: CallbackQuery, staff: Staff | None = None):
-    if staff is None or staff.role.value not in ("admin", "senior_counselor"):
-        await callback.answer("⛔ Нет прав", show_alert=True)
-        return
-    from app.db.crud import get_overdue_tasks
-    from app.db.models import STATUS_LABELS, PRIORITY_LABELS
-    async with async_session_factory() as session:
-        tasks = await get_overdue_tasks(session)
-    if not tasks:
-        await callback.message.edit_text("✅ Просроченных задач нет.")
-        await callback.answer()
-        return
-    lines = [f"⚠️ <b>Просроченные задачи</b> ({len(tasks)}):\n"]
-    for t in tasks:
-        assignee = t.assignee.full_name if t.assignee else "—"
-        lines.append(f"• <b>{t.title}</b> (ID: {t.id})\n  {assignee}")
-    await callback.message.edit_text("\n\n".join(lines), parse_mode="HTML")
-    await callback.answer()
-
-
-@router.callback_query(F.data == "templates_list_btn")
-async def cb_templates_list_btn(callback: CallbackQuery, staff: Staff | None = None):
-    if staff is None or staff.role.value not in ("admin", "senior_counselor"):
-        await callback.answer("⛔ Нет прав", show_alert=True)
-        return
-    from app.db.crud import get_all_templates
-    from app.db.models import PRIORITY_LABELS, ROLE_LABELS
-    async with async_session_factory() as session:
-        templates = await get_all_templates(session)
-    if not templates:
-        await callback.message.edit_text("📋 Шаблонов нет.")
-        await callback.answer()
-        return
-    lines = ["📋 <b>Шаблоны задач:</b>\n"]
-    for t in templates:
-        role_str = ROLE_LABELS.get(t.group_role, "—") if t.group_role else "—"
-        lines.append(f"<b>{t.title}</b> (ID: {t.id})\n  {PRIORITY_LABELS[t.priority]} | {role_str}")
-    await callback.message.edit_text("\n\n".join(lines), parse_mode="HTML")
-    await callback.answer()
-
-
-@router.callback_query(F.data == "find_replacement")
-async def cb_find_replacement(callback: CallbackQuery, staff: Staff | None = None):
-    if staff is None or staff.role != StaffRole.admin:
-        await callback.answer("⛔ Нет прав", show_alert=True)
-        return
-    await callback.message.edit_text(
-        "🔍 Поиск замены\n\nВыберите роль:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="👤 Вожатый", callback_data="free_staff:counselor")],
-            [InlineKeyboardButton(text="⭐ Старший вожатый", callback_data="free_staff:senior_counselor")],
-            [InlineKeyboardButton(text="🧑‍🏫 Воспитатель", callback_data="free_staff:educator")],
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm")],
-        ]),
-    )
-    await callback.answer()
-
-
-# --- Sections via inline from reply menu ---
-
-@router.callback_query(F.data == "staff_section")
-async def cb_staff_section(callback: CallbackQuery, staff: Staff | None = None):
-    if staff is None or staff.role != StaffRole.admin:
-        await callback.answer("⛔ Нет прав", show_alert=True)
-        return
-    await callback.message.edit_text("👥 Управление сотрудниками:", reply_markup=staff_actions_menu())
-    await callback.answer()
-
-
-@router.callback_query(F.data == "session_list")
-async def cb_session_list(callback: CallbackQuery, staff: Staff | None = None):
-    if staff is None or staff.role != StaffRole.admin:
-        await callback.answer("⛔ Нет прав", show_alert=True)
-        return
-    from app.db.crud import get_all_sessions
-    async with async_session_factory() as session:
-        sessions = await get_all_sessions(session)
-    if not sessions:
-        await callback.message.edit_text(
-            "📋 Смен пока нет.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="➕ Новая смена", callback_data="session_new")]
-            ]),
-        )
-        await callback.answer()
-        return
-    lines = ["📋 <b>Смены:</b>\n"]
-    for s in sessions:
-        status = "🟢 активна" if s.is_active else "⚪"
-        lines.append(f"<b>{s.name}</b> (ID: {s.id})\n  {s.start_date.strftime('%d.%m.%Y')} — {s.end_date.strftime('%d.%m.%Y')}  {status}")
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Новая смена", callback_data="session_new")]
-    ])
-    await callback.message.edit_text("\n\n".join(lines), reply_markup=kb, parse_mode="HTML")
-    await callback.answer()
-
-
-@router.callback_query(F.data == "session_new")
-async def cb_session_new(callback: CallbackQuery, state: FSMContext, staff: Staff | None = None):
-    if staff is None or staff.role != StaffRole.admin:
-        await callback.answer("⛔ Нет прав", show_alert=True)
-        return
-    from app.bot.states import SessionFSM
-    await callback.message.edit_text(
-        "🏕 Создание смены\n\nВведите <b>название</b> смены:",
-        reply_markup=_cancel_keyboard, parse_mode="HTML",
-    )
-    await state.set_state(SessionFSM.waiting_name)
-    await callback.answer()
-
-
-@router.callback_query(F.data == "schedule_view")
-async def cb_schedule_view(callback: CallbackQuery, staff: Staff | None = None):
-    if staff is None:
-        await callback.answer()
-        return
-    from app.db.crud import get_active_session, get_schedule
-    async with async_session_factory() as session:
-        active = await get_active_session(session)
-        if not active:
-            await callback.message.edit_text("❌ Нет активной смены.")
-            await callback.answer()
-            return
-        items = await get_schedule(session, active.id)
-    from app.bot.handlers.sessions import _format_schedule
-    kb = None
-    if staff.role == StaffRole.admin:
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="➕ Добавить мероприятие", callback_data="schedule_add")]
-        ])
-    await callback.message.edit_text(_format_schedule(active.name, items), reply_markup=kb, parse_mode="HTML")
-    await callback.answer()
-
-
-@router.callback_query(F.data == "schedule_add")
-async def cb_schedule_add(callback: CallbackQuery, state: FSMContext, staff: Staff | None = None):
-    if staff is None or staff.role != StaffRole.admin:
-        await callback.answer("⛔ Нет прав", show_alert=True)
-        return
-    from app.db.crud import get_active_session
-    from app.bot.states import ScheduleAddFSM
-    from app.bot.handlers.sessions import _day_type_kb
-    async with async_session_factory() as session:
-        active = await get_active_session(session)
-    if not active:
-        await callback.message.edit_text("❌ Нет активной смены.")
-        await callback.answer()
-        return
-    await state.update_data(session_id=active.id)
-    await callback.message.edit_text(
-        f"📅 Добавление в расписание смены <b>{active.name}</b>\n\nВыберите тип дня:",
-        reply_markup=_day_type_kb, parse_mode="HTML",
-    )
-    await state.set_state(ScheduleAddFSM.waiting_day_type)
-    await callback.answer()
 
 
 # ── cancel FSM ────────────────────────────────────────────────────────────────
@@ -286,7 +70,6 @@ async def _send_staff_page(message: Message, page: int, edit: bool = False):
             lines.append(format_staff_item(s))
         text = "\n\n".join(lines)
 
-        # Кнопки для каждого сотрудника + пагинация
         builder = InlineKeyboardBuilder()
         for s in items:
             builder.button(
@@ -348,10 +131,10 @@ async def cb_add_staff(callback: CallbackQuery, state: FSMContext, staff: Staff 
 async def fsm_get_telegram_id(message: Message, state: FSMContext):
     text = message.text.strip()
     if not text.isdigit():
-        await message.answer("❌ Telegram ID должен быть числом. Попробуйте ещё раз:", reply_markup=_cancel_keyboard)
+        await message.answer("❌ Telegram ID должен быть числом. Попробуйте ещё раз:")
         return
     await state.update_data(telegram_id=int(text))
-    await message.answer("Введите <b>полное имя</b> сотрудника (ФИО):", reply_markup=_cancel_keyboard, parse_mode="HTML")
+    await message.answer("Введите <b>полное имя</b> сотрудника (ФИО):", parse_mode="HTML")
     await state.set_state(AddStaffFSM.waiting_full_name)
 
 
@@ -359,7 +142,7 @@ async def fsm_get_telegram_id(message: Message, state: FSMContext):
 async def fsm_get_full_name(message: Message, state: FSMContext):
     full_name = message.text.strip()
     if len(full_name) < 2:
-        await message.answer("❌ Имя слишком короткое. Введите полное имя:", reply_markup=_cancel_keyboard)
+        await message.answer("❌ Имя слишком короткое. Введите полное имя:")
         return
     await state.update_data(full_name=full_name)
     await message.answer(
