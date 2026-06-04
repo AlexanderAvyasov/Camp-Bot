@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { staffApi, squadsApi, eventsApi, announcementsApi, incidentsApi, dutiesApi } from '../../api';
+import { staffApi, squadsApi, announcementsApi, incidentsApi, dutiesApi } from '../../api';
 import styles from './ManagementPage.module.css';
 
 const ROLE_LABELS = {
