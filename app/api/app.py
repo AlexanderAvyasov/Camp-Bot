@@ -1,19 +1,27 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.events import router as events_router
+from app.api.sessions import router as sessions_router
+from app.api.squads import router as squads_router
 from app.api.staff import router as staff_router
+from app.api.tasks import router as tasks_router
 
 app = FastAPI(title="Camp Bot API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(staff_router)
+app.include_router(sessions_router)
+app.include_router(squads_router)
+app.include_router(tasks_router)
+app.include_router(events_router)
 
 
 @app.get("/health")
