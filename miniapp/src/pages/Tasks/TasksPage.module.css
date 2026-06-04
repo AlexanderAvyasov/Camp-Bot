@@ -1,0 +1,127 @@
+.page {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 16px 16px calc(var(--tab-height) + 16px);
+  position: relative;
+}
+
+/* ── Header ── */
+.header {
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+/* ── Filter tabs ── */
+.filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 16px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.filters::-webkit-scrollbar {
+  display: none;
+}
+
+.filterTab {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  min-height: unset;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.filterTab.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+/* ── Task list ── */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Task card ── */
+.taskCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.taskTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.taskId {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.taskTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.45;
+}
+
+.taskBottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.assignee {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.deadline {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* ── FAB ── */
+.fab {
+  position: fixed;
+  bottom: calc(var(--tab-height) + 16px + env(safe-area-inset-bottom, 0px));
+  right: 20px;
+  width: 52px;
+  height: 52px;
+  min-height: unset;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-md);
+  transition: transform 0.15s, box-shadow 0.15s;
+  z-index: 100;
+}
+
+.fab:active {
+  transform: scale(0.93);
+  box-shadow: var(--shadow-sm);
+}

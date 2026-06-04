@@ -1,0 +1,64 @@
+.page { padding: 0; }
+
+.toolbar {
+  display: flex; gap: 8px; padding: 10px 12px 6px;
+  position: sticky; top: 0;
+  background: var(--tg-theme-bg-color, #fff);
+  z-index: 10; border-bottom: 1px solid #eee;
+}
+.search {
+  flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px;
+  font-size: 0.9rem; background: var(--tg-theme-bg-color, #fff);
+  color: var(--tg-theme-text-color, #000); min-width: 0;
+}
+.squadSelect {
+  padding: 7px 8px; border: 1px solid #ddd; border-radius: 8px;
+  font-size: 0.85rem; background: var(--tg-theme-bg-color, #fff);
+  color: var(--tg-theme-text-color, #000); max-width: 130px;
+}
+
+.importBar {
+  display: flex; gap: 8px; padding: 6px 12px 8px;
+  background: var(--tg-theme-bg-color, #fff);
+  border-bottom: 1px solid #eee;
+  align-items: center;
+}
+.importBtn {
+  padding: 7px 14px; border: none; border-radius: 8px;
+  background: var(--tg-theme-button-color, #0088cc);
+  color: var(--tg-theme-button-text-color, #fff);
+  font-size: 0.85rem; cursor: pointer; white-space: nowrap;
+}
+.importBtn:disabled { opacity: 0.6; }
+
+.importSuccess {
+  margin: 8px 12px; padding: 8px 12px; border-radius: 8px;
+  background: #d1fae5; color: #065f46; font-size: 0.85rem;
+}
+.importError {
+  margin: 8px 12px; padding: 8px 12px; border-radius: 8px;
+  background: #fee2e2; color: #991b1b; font-size: 0.85rem;
+}
+.importWarnings { margin-top: 4px; opacity: 0.8; }
+
+.loading, .empty { padding: 24px; text-align: center; color: #888; }
+
+.table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.table th {
+  text-align: left; padding: 6px 8px; background: #f5f5f5;
+  font-weight: 600; color: #555; position: sticky; top: 89px;
+  border-bottom: 1px solid #ddd;
+}
+.table td { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; }
+.row { cursor: pointer; transition: background 0.1s; }
+.row:hover { background: #f9f9f9; }
+
+.pagination {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  padding: 12px; font-size: 0.9rem;
+}
+.pagination button {
+  background: none; border: 1px solid #ddd; border-radius: 6px;
+  padding: 4px 12px; cursor: pointer;
+}
+.pagination button:disabled { opacity: 0.4; cursor: default; }

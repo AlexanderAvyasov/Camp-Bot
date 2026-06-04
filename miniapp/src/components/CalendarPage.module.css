@@ -1,0 +1,35 @@
+.calendar { padding: 12px; }
+.header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.header button {
+  background: var(--tg-theme-button-color, #0088cc);
+  color: var(--tg-theme-button-text-color, #fff);
+  border: none; border-radius: 6px; padding: 4px 10px;
+  cursor: pointer; font-size: 1.1rem;
+}
+.monthTitle { flex: 1; text-align: center; font-weight: 700; font-size: 1rem; }
+.refreshBtn { margin-left: auto; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.dayName {
+  text-align: center; font-size: 0.72rem; font-weight: 600;
+  color: #888; padding: 4px 0;
+}
+.emptyCell { min-height: 64px; }
+.dayCell {
+  min-height: 64px; border: 1px solid #e0e0e0; border-radius: 6px;
+  padding: 4px 3px; cursor: pointer; position: relative;
+  transition: background 0.15s;
+}
+.dayCell:hover { background: #f5f5f5; }
+.today { border-color: var(--tg-theme-button-color, #0088cc); background: #e8f4fd; }
+.dayNum { font-size: 0.75rem; font-weight: 600; display: block; margin-bottom: 2px; }
+.eventChip {
+  font-size: 0.65rem; color: #fff; border-radius: 3px;
+  padding: 1px 3px; margin-bottom: 1px; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis; cursor: pointer;
+}
+.moreChip { font-size: 0.62rem; color: #888; text-align: center; }

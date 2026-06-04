@@ -1,0 +1,41 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.analytics import router as analytics_router
+from app.api.announcements import router as announcements_router
+from app.api.children import router as children_router
+from app.api.circles import router as circles_router
+from app.api.duties import router as duties_router
+from app.api.events import router as events_router
+from app.api.incidents import router as incidents_router
+from app.api.sessions import router as sessions_router
+from app.api.squads import router as squads_router
+from app.api.staff import router as staff_router
+from app.api.tasks import router as tasks_router
+
+app = FastAPI(title="Camp Bot API", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(staff_router)
+app.include_router(sessions_router)
+app.include_router(squads_router)
+app.include_router(tasks_router)
+app.include_router(events_router)
+app.include_router(children_router)
+app.include_router(announcements_router)
+app.include_router(incidents_router)
+app.include_router(duties_router)
+app.include_router(circles_router)
+app.include_router(analytics_router)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
