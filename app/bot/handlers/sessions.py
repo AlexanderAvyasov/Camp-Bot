@@ -33,6 +33,8 @@ _cancel_kb = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm")]]
 )
 
+# exported for use in admin.py
+
 _day_type_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [

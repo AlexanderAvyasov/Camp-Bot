@@ -1,24 +1,20 @@
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
-
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.bot.keyboards import (
-    admin_main_menu,
-    confirm_keyboard,
     pagination_keyboard,
     role_menu,
+    schedule_menu,
+    sessions_menu,
+    staff_actions_menu,
     staff_list_empty_keyboard,
-)
-
-_cancel_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm")]]
 )
 from app.bot.middleware import require_role
 from app.bot.states import AddStaffFSM
 from app.bot.texts import format_staff_item
+from app.db.base import async_session_factory
 from app.db.crud import (
     create_staff,
     deactivate_staff,
@@ -27,60 +23,122 @@ from app.db.crud import (
     log_action,
 )
 from app.db.models import ROLE_LABELS, Staff, StaffRole
-from app.db.base import async_session_factory
 
 router = Router(name="admin")
+
+PAGE_SIZE = 5
+
+_cancel_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm")]]
+)
 
 
 # --- Navigation callbacks ---
 
-@router.callback_query(F.data == "main_menu")
-async def cb_main_menu(callback: CallbackQuery, staff: Staff | None = None):
-    if staff is None:
-        await callback.answer()
-        return
-    from app.bot.keyboards import staff_main_menu
-    from app.db.models import ROLE_LABELS
-    role_label = ROLE_LABELS.get(staff.role, str(staff.role))
-    if staff.role == StaffRole.admin:
-        await callback.message.edit_text(
-            f"Привет, <b>{staff.full_name}</b>!\nВаша роль: {role_label}",
-            reply_markup=admin_main_menu(),
-            parse_mode="HTML",
-        )
-    else:
-        from app.bot.keyboards import staff_main_menu as _sm
-        await callback.message.edit_text(
-            f"Привет, <b>{staff.full_name}</b>!\nВаша роль: {role_label}",
-            reply_markup=_sm(role_label),
-            parse_mode="HTML",
-        )
-    await callback.answer()
-
-
 @router.callback_query(F.data == "cancel_fsm")
-async def cb_cancel_fsm(callback: CallbackQuery, state: FSMContext, staff: Staff | None = None):
+async def cb_cancel_fsm(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    if staff is None:
-        await callback.message.edit_text("❌ Действие отменено.")
-        await callback.answer()
-        return
-    from app.db.models import ROLE_LABELS
-    role_label = ROLE_LABELS.get(staff.role, str(staff.role))
-    if staff.role == StaffRole.admin:
-        await callback.message.edit_text(
-            "❌ Действие отменено.",
-            reply_markup=admin_main_menu(),
-        )
-    else:
-        from app.bot.keyboards import staff_main_menu
-        await callback.message.edit_text(
-            "❌ Действие отменено.",
-            reply_markup=staff_main_menu(role_label),
-        )
+    await callback.message.edit_text("❌ Действие отменено.")
     await callback.answer()
 
-PAGE_SIZE = 5
+
+# --- Sections via inline from reply menu ---
+
+@router.callback_query(F.data == "staff_section")
+async def cb_staff_section(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None or staff.role != StaffRole.admin:
+        await callback.answer("⛔ Нет прав", show_alert=True)
+        return
+    await callback.message.edit_text("👥 Управление сотрудниками:", reply_markup=staff_actions_menu())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "session_list")
+async def cb_session_list(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None or staff.role != StaffRole.admin:
+        await callback.answer("⛔ Нет прав", show_alert=True)
+        return
+    from app.db.crud import get_all_sessions
+    async with async_session_factory() as session:
+        sessions = await get_all_sessions(session)
+    if not sessions:
+        await callback.message.edit_text(
+            "📋 Смен пока нет.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="➕ Новая смена", callback_data="session_new")]
+            ]),
+        )
+        await callback.answer()
+        return
+    lines = ["📋 <b>Смены:</b>\n"]
+    for s in sessions:
+        status = "🟢 активна" if s.is_active else "⚪"
+        lines.append(f"<b>{s.name}</b> (ID: {s.id})\n  {s.start_date.strftime('%d.%m.%Y')} — {s.end_date.strftime('%d.%m.%Y')}  {status}")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Новая смена", callback_data="session_new")]
+    ])
+    await callback.message.edit_text("\n\n".join(lines), reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "session_new")
+async def cb_session_new(callback: CallbackQuery, state: FSMContext, staff: Staff | None = None):
+    if staff is None or staff.role != StaffRole.admin:
+        await callback.answer("⛔ Нет прав", show_alert=True)
+        return
+    from app.bot.states import SessionFSM
+    await callback.message.edit_text(
+        "🏕 Создание смены\n\nВведите <b>название</b> смены:",
+        reply_markup=_cancel_keyboard, parse_mode="HTML",
+    )
+    await state.set_state(SessionFSM.waiting_name)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "schedule_view")
+async def cb_schedule_view(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None:
+        await callback.answer()
+        return
+    from app.db.crud import get_active_session, get_schedule
+    async with async_session_factory() as session:
+        active = await get_active_session(session)
+        if not active:
+            await callback.message.edit_text("❌ Нет активной смены.")
+            await callback.answer()
+            return
+        items = await get_schedule(session, active.id)
+    from app.bot.handlers.sessions import _format_schedule
+    kb = None
+    if staff.role == StaffRole.admin:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить мероприятие", callback_data="schedule_add")]
+        ])
+    await callback.message.edit_text(_format_schedule(active.name, items), reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "schedule_add")
+async def cb_schedule_add(callback: CallbackQuery, state: FSMContext, staff: Staff | None = None):
+    if staff is None or staff.role != StaffRole.admin:
+        await callback.answer("⛔ Нет прав", show_alert=True)
+        return
+    from app.db.crud import get_active_session
+    from app.bot.states import ScheduleAddFSM
+    from app.bot.handlers.sessions import _day_type_kb
+    async with async_session_factory() as session:
+        active = await get_active_session(session)
+    if not active:
+        await callback.message.edit_text("❌ Нет активной смены.")
+        await callback.answer()
+        return
+    await state.update_data(session_id=active.id)
+    await callback.message.edit_text(
+        f"📅 Добавление в расписание смены <b>{active.name}</b>\n\nВыберите тип дня:",
+        reply_markup=_day_type_kb, parse_mode="HTML",
+    )
+    await state.set_state(ScheduleAddFSM.waiting_day_type)
+    await callback.answer()
 
 
 # --- /staff_list ---
@@ -144,7 +202,7 @@ async def cb_add_staff(callback: CallbackQuery, state: FSMContext, staff: Staff 
     if staff is None or staff.role != StaffRole.admin:
         await callback.answer("⛔ Нет прав", show_alert=True)
         return
-    await callback.message.answer(
+    await callback.message.edit_text(
         "➕ Добавление сотрудника\n\nВведите <b>Telegram ID</b> нового сотрудника:",
         reply_markup=_cancel_keyboard,
         parse_mode="HTML",
@@ -157,7 +215,7 @@ async def cb_add_staff(callback: CallbackQuery, state: FSMContext, staff: Staff 
 async def fsm_get_telegram_id(message: Message, state: FSMContext):
     text = message.text.strip()
     if not text.isdigit():
-        await message.answer("❌ Telegram ID должен быть числом. Попробуйте ещё раз:")
+        await message.answer("❌ Telegram ID должен быть числом. Попробуйте ещё раз:", reply_markup=_cancel_keyboard)
         return
     await state.update_data(telegram_id=int(text))
     await message.answer("Введите <b>полное имя</b> сотрудника (ФИО):", reply_markup=_cancel_keyboard, parse_mode="HTML")
@@ -168,7 +226,7 @@ async def fsm_get_telegram_id(message: Message, state: FSMContext):
 async def fsm_get_full_name(message: Message, state: FSMContext):
     full_name = message.text.strip()
     if len(full_name) < 2:
-        await message.answer("❌ Имя слишком короткое. Введите полное имя:")
+        await message.answer("❌ Имя слишком короткое. Введите полное имя:", reply_markup=_cancel_keyboard)
         return
     await state.update_data(full_name=full_name)
     await message.answer(
@@ -212,7 +270,7 @@ async def fsm_get_role(callback: CallbackQuery, state: FSMContext, staff: Staff 
         f"Роль: {role_label}\n"
         f"Telegram ID: <code>{telegram_id}</code>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+            [InlineKeyboardButton(text="➕ Добавить ещё", callback_data="add_staff")],
         ]),
         parse_mode="HTML",
     )
