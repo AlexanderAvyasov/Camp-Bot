@@ -41,11 +41,14 @@ _skip_cancel_kb = InlineKeyboardMarkup(
 def _squad_text(squad) -> str:
     counselor = squad.counselor.full_name if squad.counselor else "—"
     educator = squad.educator.full_name if squad.educator else "—"
-    members = [m for m in squad.members if m.id not in {squad.counselor_id, squad.educator_id}]
+    educator_2 = squad.educator_2.full_name if squad.educator_2 else "—"
+    staff_ids = {squad.counselor_id, squad.educator_id, squad.educator_id_2} - {None}
+    members = [m for m in squad.members if m.id not in staff_ids]
     return (
         f"🏕 <b>{squad.name}</b> (ID: {squad.id})\n"
         f"  Вожатый: {counselor}\n"
-        f"  Воспитатель: {educator}\n"
+        f"  Воспитатель 1: {educator}\n"
+        f"  Воспитатель 2: {educator_2}\n"
         f"  Детей: {len(members)}"
     )
 
@@ -136,12 +139,48 @@ async def fsm_squad_educator(message: Message, state: FSMContext):
         )
         return
     await state.update_data(educator_id=person.id, educator_name=person.full_name)
-    await _finish_squad_creation(message, state)
+    await message.answer(
+        f"✅ Воспитатель 1: <b>{person.full_name}</b>\n\nВведите <b>Telegram ID второго воспитателя</b> (или пропустите):",
+        reply_markup=_skip_cancel_kb, parse_mode="HTML",
+    )
+    await state.set_state(SquadNewFSM.waiting_educator_2)
 
 
 @router.callback_query(SquadNewFSM.waiting_educator, F.data == "squad_skip")
 async def fsm_squad_educator_skip(callback: CallbackQuery, state: FSMContext):
     await state.update_data(educator_id=None)
+    await callback.message.edit_text(
+        "Введите <b>Telegram ID второго воспитателя</b> (или пропустите):",
+        reply_markup=_skip_cancel_kb, parse_mode="HTML",
+    )
+    await state.set_state(SquadNewFSM.waiting_educator_2)
+    await callback.answer()
+
+
+@router.message(SquadNewFSM.waiting_educator_2)
+async def fsm_squad_educator_2(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if not text.isdigit():
+        await message.answer("❌ Введите числовой Telegram ID:", reply_markup=_skip_cancel_kb)
+        return
+    async with async_session_factory() as session:
+        person = await get_staff_by_telegram_id(session, int(text))
+    if not person:
+        await message.answer("❌ Сотрудник не найден. Введите ещё раз:", reply_markup=_skip_cancel_kb)
+        return
+    if person.role not in _EDUCATOR_ROLES:
+        await message.answer(
+            f"❌ У сотрудника роль «{ROLE_LABELS[person.role]}», а нужна роль воспитателя. Введите другой ID:",
+            reply_markup=_skip_cancel_kb, parse_mode="HTML",
+        )
+        return
+    await state.update_data(educator_id_2=person.id, educator_name_2=person.full_name)
+    await _finish_squad_creation(message, state)
+
+
+@router.callback_query(SquadNewFSM.waiting_educator_2, F.data == "squad_skip")
+async def fsm_squad_educator_2_skip(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(educator_id_2=None)
     await _finish_squad_creation(callback.message, state, edit=True)
     await callback.answer()
 
@@ -155,14 +194,17 @@ async def _finish_squad_creation(message: Message, state: FSMContext, edit: bool
             data["name"],
             counselor_id=data.get("counselor_id"),
             educator_id=data.get("educator_id"),
+            educator_id_2=data.get("educator_id_2"),
         )
     counselor = data.get("counselor_name", "—")
     educator = data.get("educator_name", "—")
+    educator_2 = data.get("educator_name_2", "—")
     text = (
         f"✅ Отряд создан!\n\n"
         f"🏕 <b>{squad.name}</b> (ID: {squad.id})\n"
         f"  Вожатый: {counselor}\n"
-        f"  Воспитатель: {educator}"
+        f"  Воспитатель 1: {educator}\n"
+        f"  Воспитатель 2: {educator_2}"
     )
     if edit:
         await message.edit_text(text, parse_mode="HTML")
@@ -246,7 +288,8 @@ async def cmd_squad_edit(message: Message, state: FSMContext, staff: Staff | Non
         f"Редактирование отряда <b>{squad.name}</b>\n\nЧто изменить?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="👤 Вожатый", callback_data="squad_edit_field:counselor")],
-            [InlineKeyboardButton(text="👩‍🏫 Воспитатель", callback_data="squad_edit_field:educator")],
+            [InlineKeyboardButton(text="👩‍🏫 Воспитатель 1", callback_data="squad_edit_field:educator")],
+            [InlineKeyboardButton(text="👩‍🏫 Воспитатель 2", callback_data="squad_edit_field:educator_2")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm")],
         ]),
         parse_mode="HTML",
@@ -258,7 +301,7 @@ async def cmd_squad_edit(message: Message, state: FSMContext, staff: Staff | Non
 async def fsm_squad_edit_field(callback: CallbackQuery, state: FSMContext):
     field = callback.data.split(":")[1]
     await state.update_data(field=field)
-    label = "вожатого" if field == "counselor" else "воспитателя"
+    label = "вожатого" if field == "counselor" else ("первого воспитателя" if field == "educator" else "второго воспитателя")
     await callback.message.edit_text(
         f"Введите <b>Telegram ID</b> нового {label}:",
         reply_markup=_cancel_kb, parse_mode="HTML",
@@ -290,7 +333,14 @@ async def fsm_squad_edit_staff(message: Message, state: FSMContext):
                 reply_markup=_cancel_kb, parse_mode="HTML",
             )
             return
-        kwargs = {f"{field}_id": person.id}
+        # field can be "counselor", "educator", or "educator_2"
+        kwargs: dict = {}
+        if field == "counselor":
+            kwargs["counselor_id"] = person.id
+        elif field == "educator":
+            kwargs["educator_id"] = person.id
+        else:
+            kwargs["educator_id_2"] = person.id
         squad = await update_squad(session, squad_id, **kwargs)
 
     await state.clear()

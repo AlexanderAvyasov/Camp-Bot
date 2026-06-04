@@ -54,7 +54,13 @@ async def create_squad_endpoint(body: SquadCreate, session: AsyncSession = Depen
             raise HTTPException(status_code=404, detail="Воспитатель не найден")
         if person.role not in _EDUCATOR_ROLES:
             raise HTTPException(status_code=422, detail="Сотрудник не является воспитателем")
-    return await create_squad(session, body.name, body.counselor_id, body.educator_id)
+    if body.educator_id_2:
+        person = await get_staff_by_id(session, body.educator_id_2)
+        if not person:
+            raise HTTPException(status_code=404, detail="Воспитатель 2 не найден")
+        if person.role not in _EDUCATOR_ROLES:
+            raise HTTPException(status_code=422, detail="Сотрудник 2 не является воспитателем")
+    return await create_squad(session, body.name, body.counselor_id, body.educator_id, body.educator_id_2)
 
 
 @router.patch("/{squad_id}", response_model=SquadDetailOut)
@@ -76,5 +82,11 @@ async def update_squad_endpoint(
             raise HTTPException(status_code=404, detail="Воспитатель не найден")
         if person.role not in _EDUCATOR_ROLES:
             raise HTTPException(status_code=422, detail="Сотрудник не является воспитателем")
-    updated = await update_squad(session, squad_id, body.counselor_id, body.educator_id)
+    if body.educator_id_2:
+        person = await get_staff_by_id(session, body.educator_id_2)
+        if not person:
+            raise HTTPException(status_code=404, detail="Воспитатель 2 не найден")
+        if person.role not in _EDUCATOR_ROLES:
+            raise HTTPException(status_code=422, detail="Сотрудник 2 не является воспитателем")
+    updated = await update_squad(session, squad_id, body.counselor_id, body.educator_id, body.educator_id_2)
     return updated

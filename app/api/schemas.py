@@ -81,19 +81,23 @@ class SquadDetailOut(BaseModel):
     name: str
     counselor_id: int | None
     educator_id: int | None
+    educator_id_2: int | None
     counselor: SquadStaffOut | None
     educator: SquadStaffOut | None
+    educator_2: SquadStaffOut | None
 
 
 class SquadCreate(BaseModel):
     name: str
     counselor_id: int | None = None
     educator_id: int | None = None
+    educator_id_2: int | None = None
 
 
 class SquadUpdate(BaseModel):
     counselor_id: int | None = None
     educator_id: int | None = None
+    educator_id_2: int | None = None
 
 
 class FreeStaffOut(BaseModel):

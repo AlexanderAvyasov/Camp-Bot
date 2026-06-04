@@ -53,12 +53,18 @@ class Squad(Base):
     educator_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("staff.id", use_alter=True, name="fk_squad_educator"), nullable=True
     )
+    educator_id_2: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("staff.id", use_alter=True, name="fk_squad_educator_2"), nullable=True
+    )
 
     counselor: Mapped["Staff | None"] = relationship(
         "Staff", foreign_keys=[counselor_id], lazy="selectin"
     )
     educator: Mapped["Staff | None"] = relationship(
         "Staff", foreign_keys=[educator_id], lazy="selectin"
+    )
+    educator_2: Mapped["Staff | None"] = relationship(
+        "Staff", foreign_keys=[educator_id_2], lazy="selectin"
     )
     members: Mapped[list["Staff"]] = relationship(
         "Staff", foreign_keys="Staff.squad_id", back_populates="squad", lazy="selectin"

@@ -23,6 +23,7 @@ class SquadNewFSM(StatesGroup):
     waiting_name = State()
     waiting_counselor = State()
     waiting_educator = State()
+    waiting_educator_2 = State()
 
 
 class SquadEditFSM(StatesGroup):

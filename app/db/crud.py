@@ -93,14 +93,13 @@ async def create_squad(
     name: str,
     counselor_id: int | None = None,
     educator_id: int | None = None,
+    educator_id_2: int | None = None,
 ) -> Squad:
-    squad = Squad(name=name, counselor_id=counselor_id, educator_id=educator_id)
+    squad = Squad(name=name, counselor_id=counselor_id, educator_id=educator_id, educator_id_2=educator_id_2)
     session.add(squad)
     await session.flush()
-    if counselor_id:
-        await session.execute(update(Staff).where(Staff.id == counselor_id).values(squad_id=squad.id))
-    if educator_id:
-        await session.execute(update(Staff).where(Staff.id == educator_id).values(squad_id=squad.id))
+    for sid in filter(None, [counselor_id, educator_id, educator_id_2]):
+        await session.execute(update(Staff).where(Staff.id == sid).values(squad_id=squad.id))
     await session.commit()
     await session.refresh(squad)
     return squad
@@ -111,23 +110,22 @@ async def update_squad(
     squad_id: int,
     counselor_id: int | None = None,
     educator_id: int | None = None,
+    educator_id_2: int | None = None,
 ) -> Squad | None:
     squad = await get_squad_by_id(session, squad_id)
     if not squad:
         return None
-    # Unassign old staff
-    if counselor_id is not None and squad.counselor_id and squad.counselor_id != counselor_id:
-        await session.execute(update(Staff).where(Staff.id == squad.counselor_id).values(squad_id=None))
-    if educator_id is not None and squad.educator_id and squad.educator_id != educator_id:
-        await session.execute(update(Staff).where(Staff.id == squad.educator_id).values(squad_id=None))
-    # Assign new
     updates: dict = {}
-    if counselor_id is not None:
-        updates["counselor_id"] = counselor_id
-        await session.execute(update(Staff).where(Staff.id == counselor_id).values(squad_id=squad_id))
-    if educator_id is not None:
-        updates["educator_id"] = educator_id
-        await session.execute(update(Staff).where(Staff.id == educator_id).values(squad_id=squad_id))
+    # Helper: unassign old, assign new
+    async def _swap(old_id, new_id, field):
+        if new_id is not None:
+            if old_id and old_id != new_id:
+                await session.execute(update(Staff).where(Staff.id == old_id).values(squad_id=None))
+            await session.execute(update(Staff).where(Staff.id == new_id).values(squad_id=squad_id))
+            updates[field] = new_id
+    await _swap(squad.counselor_id, counselor_id, "counselor_id")
+    await _swap(squad.educator_id, educator_id, "educator_id")
+    await _swap(squad.educator_id_2, educator_id_2, "educator_id_2")
     if updates:
         await session.execute(update(Squad).where(Squad.id == squad_id).values(**updates))
     await session.commit()
