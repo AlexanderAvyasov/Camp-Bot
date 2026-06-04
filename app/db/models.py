@@ -142,3 +142,117 @@ class DaySchedule(Base):
     )
 
     session: Mapped["Session"] = relationship("Session", back_populates="schedule", lazy="noload")
+
+
+# ── Tasks ─────────────────────────────────────────────────────────────────────
+
+class TaskPriority(str, enum.Enum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+
+
+class TaskStatus(str, enum.Enum):
+    new = "new"
+    accepted = "accepted"
+    in_progress = "in_progress"
+    done = "done"
+    overdue = "overdue"
+
+
+class RecurrenceType(str, enum.Enum):
+    daily = "daily"
+    weekly = "weekly"
+
+
+PRIORITY_LABELS = {
+    TaskPriority.low: "🟢 Низкий",
+    TaskPriority.medium: "🟡 Средний",
+    TaskPriority.high: "🔴 Высокий",
+}
+
+STATUS_LABELS = {
+    TaskStatus.new: "🆕 Новая",
+    TaskStatus.accepted: "✅ Принята",
+    TaskStatus.in_progress: "🔄 В работе",
+    TaskStatus.done: "✔️ Выполнена",
+    TaskStatus.overdue: "⚠️ Просрочена",
+}
+
+
+class TaskTemplate(Base):
+    __tablename__ = "task_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    group_role: Mapped[StaffRole | None] = mapped_column(Enum(StaffRole), nullable=True)
+    priority: Mapped[TaskPriority] = mapped_column(
+        Enum(TaskPriority), nullable=False, default=TaskPriority.medium
+    )
+    recurrence_type: Mapped[RecurrenceType | None] = mapped_column(Enum(RecurrenceType), nullable=True)
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[int] = mapped_column(Integer, ForeignKey("staff.id"), nullable=False)
+    assigned_to: Mapped[int | None] = mapped_column(Integer, ForeignKey("staff.id"), nullable=True)
+    group_role: Mapped[StaffRole | None] = mapped_column(Enum(StaffRole), nullable=True)
+    priority: Mapped[TaskPriority] = mapped_column(
+        Enum(TaskPriority), nullable=False, default=TaskPriority.medium
+    )
+    status: Mapped[TaskStatus] = mapped_column(
+        Enum(TaskStatus), nullable=False, default=TaskStatus.new
+    )
+    deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    recurrence_type: Mapped[RecurrenceType | None] = mapped_column(Enum(RecurrenceType), nullable=True)
+    paused_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    template_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("task_templates.id"), nullable=True
+    )
+    session_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("sessions.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    creator: Mapped["Staff"] = relationship("Staff", foreign_keys=[created_by], lazy="selectin")
+    assignee: Mapped["Staff | None"] = relationship("Staff", foreign_keys=[assigned_to], lazy="selectin")
+    logs: Mapped[list["TaskLog"]] = relationship(
+        "TaskLog", back_populates="task", lazy="noload", cascade="all, delete-orphan"
+    )
+    photos: Mapped[list["TaskPhoto"]] = relationship(
+        "TaskPhoto", back_populates="task", lazy="noload", cascade="all, delete-orphan"
+    )
+
+
+class TaskLog(Base):
+    __tablename__ = "task_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("tasks.id"), nullable=False)
+    actor_id: Mapped[int] = mapped_column(Integer, ForeignKey("staff.id"), nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    task: Mapped["Task"] = relationship("Task", back_populates="logs", lazy="noload")
+    actor: Mapped["Staff"] = relationship("Staff", foreign_keys=[actor_id], lazy="selectin")
+
+
+class TaskPhoto(Base):
+    __tablename__ = "task_photos"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("tasks.id"), nullable=False)
+    photo_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    task: Mapped["Task"] = relationship("Task", back_populates="photos", lazy="noload")

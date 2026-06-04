@@ -9,6 +9,8 @@ from app.bot.keyboards import (
     squads_menu,
     staff_reply_menu,
     staff_actions_menu,
+    tasks_admin_menu,
+    tasks_staff_menu,
 )
 from app.bot.texts import ONBOARDING
 from app.db.models import ROLE_LABELS, Staff, StaffRole
@@ -86,6 +88,16 @@ async def menu_schedule(message: Message, staff: Staff | None = None):
             items = await get_schedule(session, active.id)
         from app.bot.handlers.sessions import _format_schedule
         await message.answer(_format_schedule(active.name, items), parse_mode="HTML")
+
+
+@router.message(F.text == "✅ Задачи")
+async def menu_tasks(message: Message, staff: Staff | None = None):
+    if staff is None:
+        return
+    if staff.role == StaffRole.admin:
+        await message.answer("✅ Управление задачами:", reply_markup=tasks_admin_menu())
+    else:
+        await message.answer("✅ Мои задачи:", reply_markup=tasks_staff_menu())
 
 
 @router.message(F.text == "👤 Мой профиль")

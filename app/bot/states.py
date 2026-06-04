@@ -28,3 +28,18 @@ class SquadNewFSM(StatesGroup):
 class SquadEditFSM(StatesGroup):
     waiting_field = State()
     waiting_staff = State()
+
+
+class TaskCreateFSM(StatesGroup):
+    waiting_assignee = State()
+    waiting_title = State()
+    waiting_deadline = State()
+    waiting_priority = State()
+
+
+class TemplateFSM(StatesGroup):
+    waiting_title = State()
+    waiting_description = State()
+    waiting_role = State()
+    waiting_priority = State()
+    waiting_recurrence = State()

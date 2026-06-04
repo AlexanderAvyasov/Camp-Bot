@@ -1,9 +1,14 @@
-from datetime import date, time
+from datetime import date, datetime, time
+from typing import Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ActionLog, DaySchedule, DayType, Session, Squad, Staff, StaffRole
+from app.db.models import (
+    ActionLog, DaySchedule, DayType,
+    Session, Squad, Staff, StaffRole,
+    Task, TaskLog, TaskPhoto, TaskPriority, TaskStatus, TaskTemplate, RecurrenceType,
+)
 
 
 # --- Staff ---
@@ -213,6 +218,167 @@ async def copy_schedule(
         session.add(new_item)
     await session.commit()
     return len(items)
+
+
+# --- Tasks ---
+
+async def create_task(
+    session: AsyncSession,
+    title: str,
+    created_by: int,
+    session_id: Optional[int] = None,
+    description: Optional[str] = None,
+    assigned_to: Optional[int] = None,
+    group_role: Optional[StaffRole] = None,
+    priority: TaskPriority = TaskPriority.medium,
+    deadline: Optional[datetime] = None,
+    is_recurring: bool = False,
+    recurrence_type: Optional[RecurrenceType] = None,
+    template_id: Optional[int] = None,
+) -> Task:
+    task = Task(
+        title=title, description=description, created_by=created_by,
+        assigned_to=assigned_to, group_role=group_role, priority=priority,
+        status=TaskStatus.new, deadline=deadline, is_recurring=is_recurring,
+        recurrence_type=recurrence_type, template_id=template_id, session_id=session_id,
+    )
+    session.add(task)
+    await session.commit()
+    await session.refresh(task)
+    return task
+
+
+async def get_task_by_id(session: AsyncSession, task_id: int) -> Task | None:
+    result = await session.execute(select(Task).where(Task.id == task_id))
+    return result.scalar_one_or_none()
+
+
+async def get_tasks_for_staff(session: AsyncSession, staff_id: int) -> list[Task]:
+    result = await session.execute(
+        select(Task)
+        .where(Task.assigned_to == staff_id, Task.status != TaskStatus.done)
+        .order_by(Task.priority.desc(), Task.deadline)
+    )
+    return list(result.scalars().all())
+
+
+async def get_all_tasks(
+    session: AsyncSession,
+    status: Optional[TaskStatus] = None,
+    assigned_to: Optional[int] = None,
+    session_id: Optional[int] = None,
+    offset: int = 0,
+    limit: int = 10,
+) -> tuple[list[Task], int]:
+    q = select(Task)
+    if status:
+        q = q.where(Task.status == status)
+    if assigned_to:
+        q = q.where(Task.assigned_to == assigned_to)
+    if session_id:
+        q = q.where(Task.session_id == session_id)
+    count_q = select(Task)
+    if status:
+        count_q = count_q.where(Task.status == status)
+    if assigned_to:
+        count_q = count_q.where(Task.assigned_to == assigned_to)
+    if session_id:
+        count_q = count_q.where(Task.session_id == session_id)
+    total = len(list((await session.execute(count_q)).scalars().all()))
+    result = await session.execute(q.order_by(Task.created_at.desc()).offset(offset).limit(limit))
+    return list(result.scalars().all()), total
+
+
+async def get_overdue_tasks(session: AsyncSession) -> list[Task]:
+    now = datetime.utcnow()
+    result = await session.execute(
+        select(Task).where(
+            Task.deadline < now,
+            Task.status.not_in([TaskStatus.done, TaskStatus.overdue]),
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def get_recurring_tasks(session: AsyncSession) -> list[Task]:
+    today = datetime.utcnow().date()
+    result = await session.execute(
+        select(Task).where(
+            Task.is_recurring == True,
+            Task.status == TaskStatus.done,
+            or_(Task.paused_until == None, Task.paused_until <= today),
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def update_task_status(
+    session: AsyncSession, task_id: int, actor_id: int, status: TaskStatus, action_text: str
+) -> Task | None:
+    await session.execute(update(Task).where(Task.id == task_id).values(status=status))
+    log = TaskLog(task_id=task_id, actor_id=actor_id, action=action_text)
+    session.add(log)
+    await session.commit()
+    return await get_task_by_id(session, task_id)
+
+
+async def update_task(session: AsyncSession, task_id: int, **kwargs) -> Task | None:
+    await session.execute(update(Task).where(Task.id == task_id).values(**kwargs))
+    await session.commit()
+    return await get_task_by_id(session, task_id)
+
+
+async def add_task_log(
+    session: AsyncSession, task_id: int, actor_id: int, action: str
+) -> TaskLog:
+    log = TaskLog(task_id=task_id, actor_id=actor_id, action=action)
+    session.add(log)
+    await session.commit()
+    return log
+
+
+async def get_task_logs(session: AsyncSession, task_id: int) -> list[TaskLog]:
+    result = await session.execute(
+        select(TaskLog).where(TaskLog.task_id == task_id).order_by(TaskLog.timestamp)
+    )
+    return list(result.scalars().all())
+
+
+async def add_task_photo(session: AsyncSession, task_id: int, photo_url: str) -> TaskPhoto:
+    photo = TaskPhoto(task_id=task_id, photo_url=photo_url)
+    session.add(photo)
+    await session.commit()
+    return photo
+
+
+# --- Task templates ---
+
+async def create_template(
+    session: AsyncSession,
+    title: str,
+    description: Optional[str],
+    group_role: Optional[StaffRole],
+    priority: TaskPriority,
+    recurrence_type: Optional[RecurrenceType],
+) -> TaskTemplate:
+    tmpl = TaskTemplate(
+        title=title, description=description, group_role=group_role,
+        priority=priority, recurrence_type=recurrence_type,
+    )
+    session.add(tmpl)
+    await session.commit()
+    await session.refresh(tmpl)
+    return tmpl
+
+
+async def get_all_templates(session: AsyncSession) -> list[TaskTemplate]:
+    result = await session.execute(select(TaskTemplate).order_by(TaskTemplate.title))
+    return list(result.scalars().all())
+
+
+async def get_template_by_id(session: AsyncSession, tmpl_id: int) -> TaskTemplate | None:
+    result = await session.execute(select(TaskTemplate).where(TaskTemplate.id == tmpl_id))
+    return result.scalar_one_or_none()
 
 
 # --- Action logs ---

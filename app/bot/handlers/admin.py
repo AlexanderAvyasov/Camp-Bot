@@ -42,6 +42,93 @@ async def cb_cancel_fsm(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+@router.callback_query(F.data == "mytasks_btn")
+async def cb_mytasks_btn(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None:
+        await callback.answer()
+        return
+    from app.db.crud import get_tasks_for_staff
+    from app.db.models import STATUS_LABELS, PRIORITY_LABELS
+    async with async_session_factory() as session:
+        tasks = await get_tasks_for_staff(session, staff.id)
+    if not tasks:
+        await callback.message.edit_text("✅ У вас нет активных задач.")
+        await callback.answer()
+        return
+    lines = [f"📋 <b>Ваши задачи</b> ({len(tasks)}):\n"]
+    for t in tasks:
+        dl = t.deadline.strftime("%d.%m.%Y %H:%M") if t.deadline else "—"
+        lines.append(f"• <b>{t.title}</b> (ID: {t.id})\n  {STATUS_LABELS[t.status]} | до {dl}")
+    await callback.message.edit_text(
+        "\n\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Обновить", callback_data="mytasks_btn")]
+        ]),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "tasks_all_btn")
+async def cb_tasks_all_btn(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None or staff.role.value not in ("admin", "senior_counselor"):
+        await callback.answer("⛔ Нет прав", show_alert=True)
+        return
+    from app.db.crud import get_all_tasks
+    from app.db.models import STATUS_LABELS, PRIORITY_LABELS
+    async with async_session_factory() as session:
+        tasks, total = await get_all_tasks(session, limit=10)
+    lines = [f"📋 <b>Все задачи</b> ({total}):\n"]
+    for t in tasks:
+        dl = t.deadline.strftime("%d.%m.%Y %H:%M") if t.deadline else "—"
+        assignee = t.assignee.full_name if t.assignee else "—"
+        lines.append(f"• <b>{t.title}</b> (ID: {t.id})\n  {STATUS_LABELS[t.status]} | {assignee} | до {dl}")
+    await callback.message.edit_text("\n\n".join(lines), parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "tasks_pending_btn")
+async def cb_tasks_pending_btn(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None or staff.role.value not in ("admin", "senior_counselor"):
+        await callback.answer("⛔ Нет прав", show_alert=True)
+        return
+    from app.db.crud import get_overdue_tasks
+    from app.db.models import STATUS_LABELS, PRIORITY_LABELS
+    async with async_session_factory() as session:
+        tasks = await get_overdue_tasks(session)
+    if not tasks:
+        await callback.message.edit_text("✅ Просроченных задач нет.")
+        await callback.answer()
+        return
+    lines = [f"⚠️ <b>Просроченные задачи</b> ({len(tasks)}):\n"]
+    for t in tasks:
+        assignee = t.assignee.full_name if t.assignee else "—"
+        lines.append(f"• <b>{t.title}</b> (ID: {t.id})\n  {assignee}")
+    await callback.message.edit_text("\n\n".join(lines), parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "templates_list_btn")
+async def cb_templates_list_btn(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None or staff.role.value not in ("admin", "senior_counselor"):
+        await callback.answer("⛔ Нет прав", show_alert=True)
+        return
+    from app.db.crud import get_all_templates
+    from app.db.models import PRIORITY_LABELS, ROLE_LABELS
+    async with async_session_factory() as session:
+        templates = await get_all_templates(session)
+    if not templates:
+        await callback.message.edit_text("📋 Шаблонов нет.")
+        await callback.answer()
+        return
+    lines = ["📋 <b>Шаблоны задач:</b>\n"]
+    for t in templates:
+        role_str = ROLE_LABELS.get(t.group_role, "—") if t.group_role else "—"
+        lines.append(f"<b>{t.title}</b> (ID: {t.id})\n  {PRIORITY_LABELS[t.priority]} | {role_str}")
+    await callback.message.edit_text("\n\n".join(lines), parse_mode="HTML")
+    await callback.answer()
+
+
 @router.callback_query(F.data == "find_replacement")
 async def cb_find_replacement(callback: CallbackQuery, staff: Staff | None = None):
     if staff is None or staff.role != StaffRole.admin:

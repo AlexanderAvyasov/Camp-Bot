@@ -17,10 +17,28 @@ def admin_reply_menu() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="👥 Сотрудники"), KeyboardButton(text="🏕 Смены")],
             [KeyboardButton(text="🏕 Отряды"), KeyboardButton(text="📅 Расписание")],
-            [KeyboardButton(text="👤 Мой профиль")],
+            [KeyboardButton(text="✅ Задачи"), KeyboardButton(text="👤 Мой профиль")],
         ],
         resize_keyboard=True,
         persistent=True,
+    )
+
+
+def tasks_admin_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Все задачи", callback_data="tasks_all_btn")],
+            [InlineKeyboardButton(text="⚠️ Просроченные", callback_data="tasks_pending_btn")],
+            [InlineKeyboardButton(text="📝 Шаблоны", callback_data="templates_list_btn")],
+        ]
+    )
+
+
+def tasks_staff_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Мои задачи", callback_data="mytasks_btn")],
+        ]
     )
 
 
@@ -37,7 +55,8 @@ def squads_menu() -> InlineKeyboardMarkup:
 def staff_reply_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📅 Расписание"), KeyboardButton(text="👤 Мой профиль")],
+            [KeyboardButton(text="✅ Задачи"), KeyboardButton(text="📅 Расписание")],
+            [KeyboardButton(text="👤 Мой профиль")],
         ],
         resize_keyboard=True,
         persistent=True,

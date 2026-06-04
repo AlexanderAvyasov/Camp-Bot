@@ -6,7 +6,7 @@ from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db.base import Base
-from app.db.models import ActionLog, DaySchedule, Session, Squad, Staff  # noqa: F401 — register models
+from app.db.models import ActionLog, DaySchedule, Session, Squad, Staff, Task, TaskLog, TaskPhoto, TaskTemplate  # noqa: F401 — register models
 
 config = context.config
 
