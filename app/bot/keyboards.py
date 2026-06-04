@@ -4,11 +4,16 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from app.db.models import ROLE_LABELS, StaffRole
 
 
+def back_button(callback_data: str = "main_menu") -> list[InlineKeyboardButton]:
+    return [InlineKeyboardButton(text="◀️ Главное меню", callback_data=callback_data)]
+
+
 def role_menu(prefix: str = "set_role") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for role in StaffRole:
         builder.button(text=ROLE_LABELS[role], callback_data=f"{prefix}:{role.value}")
     builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm"))
     return builder.as_markup()
 
 
@@ -36,6 +41,7 @@ def pagination_keyboard(page: int, total_pages: int, prefix: str = "staff_list")
     if page < total_pages - 1:
         builder.button(text="Вперёд ▶️", callback_data=f"{prefix}:{page + 1}")
     builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu"))
     return builder.as_markup()
 
 
@@ -55,4 +61,13 @@ def staff_edit_role_keyboard(staff_id: int) -> InlineKeyboardMarkup:
     for role in StaffRole:
         builder.button(text=ROLE_LABELS[role], callback_data=f"edit_role:{staff_id}:{role.value}")
     builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="main_menu"))
     return builder.as_markup()
+
+
+def staff_list_empty_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")],
+        ]
+    )

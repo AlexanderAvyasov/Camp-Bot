@@ -3,7 +3,19 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from app.bot.keyboards import pagination_keyboard, role_menu
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+from app.bot.keyboards import (
+    admin_main_menu,
+    confirm_keyboard,
+    pagination_keyboard,
+    role_menu,
+    staff_list_empty_keyboard,
+)
+
+_cancel_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm")]]
+)
 from app.bot.middleware import require_role
 from app.bot.states import AddStaffFSM
 from app.bot.texts import format_staff_item
@@ -18,6 +30,55 @@ from app.db.models import ROLE_LABELS, Staff, StaffRole
 from app.db.base import async_session_factory
 
 router = Router(name="admin")
+
+
+# --- Navigation callbacks ---
+
+@router.callback_query(F.data == "main_menu")
+async def cb_main_menu(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None:
+        await callback.answer()
+        return
+    from app.bot.keyboards import staff_main_menu
+    from app.db.models import ROLE_LABELS
+    role_label = ROLE_LABELS.get(staff.role, str(staff.role))
+    if staff.role == StaffRole.admin:
+        await callback.message.edit_text(
+            f"Привет, <b>{staff.full_name}</b>!\nВаша роль: {role_label}",
+            reply_markup=admin_main_menu(),
+            parse_mode="HTML",
+        )
+    else:
+        from app.bot.keyboards import staff_main_menu as _sm
+        await callback.message.edit_text(
+            f"Привет, <b>{staff.full_name}</b>!\nВаша роль: {role_label}",
+            reply_markup=_sm(role_label),
+            parse_mode="HTML",
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "cancel_fsm")
+async def cb_cancel_fsm(callback: CallbackQuery, state: FSMContext, staff: Staff | None = None):
+    await state.clear()
+    if staff is None:
+        await callback.message.edit_text("❌ Действие отменено.")
+        await callback.answer()
+        return
+    from app.db.models import ROLE_LABELS
+    role_label = ROLE_LABELS.get(staff.role, str(staff.role))
+    if staff.role == StaffRole.admin:
+        await callback.message.edit_text(
+            "❌ Действие отменено.",
+            reply_markup=admin_main_menu(),
+        )
+    else:
+        from app.bot.keyboards import staff_main_menu
+        await callback.message.edit_text(
+            "❌ Действие отменено.",
+            reply_markup=staff_main_menu(role_label),
+        )
+    await callback.answer()
 
 PAGE_SIZE = 5
 
@@ -48,7 +109,7 @@ async def _send_staff_page(message: Message, page: int, edit: bool = False):
 
     if not items:
         text = "📋 Список сотрудников пуст."
-        markup = None
+        markup = staff_list_empty_keyboard()
     else:
         total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
         lines = [f"📋 <b>Сотрудники</b> (стр. {page + 1}/{total_pages})\n"]
@@ -72,6 +133,7 @@ async def cmd_add_staff(message: Message, state: FSMContext, staff: Staff | None
         return
     await message.answer(
         "➕ Добавление сотрудника\n\nВведите <b>Telegram ID</b> нового сотрудника:",
+        reply_markup=_cancel_keyboard,
         parse_mode="HTML",
     )
     await state.set_state(AddStaffFSM.waiting_telegram_id)
@@ -84,6 +146,7 @@ async def cb_add_staff(callback: CallbackQuery, state: FSMContext, staff: Staff 
         return
     await callback.message.answer(
         "➕ Добавление сотрудника\n\nВведите <b>Telegram ID</b> нового сотрудника:",
+        reply_markup=_cancel_keyboard,
         parse_mode="HTML",
     )
     await state.set_state(AddStaffFSM.waiting_telegram_id)
@@ -97,7 +160,7 @@ async def fsm_get_telegram_id(message: Message, state: FSMContext):
         await message.answer("❌ Telegram ID должен быть числом. Попробуйте ещё раз:")
         return
     await state.update_data(telegram_id=int(text))
-    await message.answer("Введите <b>полное имя</b> сотрудника (ФИО):", parse_mode="HTML")
+    await message.answer("Введите <b>полное имя</b> сотрудника (ФИО):", reply_markup=_cancel_keyboard, parse_mode="HTML")
     await state.set_state(AddStaffFSM.waiting_full_name)
 
 
@@ -148,6 +211,9 @@ async def fsm_get_role(callback: CallbackQuery, state: FSMContext, staff: Staff 
         f"👤 <b>{full_name}</b>\n"
         f"Роль: {role_label}\n"
         f"Telegram ID: <code>{telegram_id}</code>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+        ]),
         parse_mode="HTML",
     )
     await state.clear()
