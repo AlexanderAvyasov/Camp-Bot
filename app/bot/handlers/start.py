@@ -6,6 +6,7 @@ from app.bot.keyboards import (
     admin_reply_menu,
     schedule_menu,
     sessions_menu,
+    squads_menu,
     staff_reply_menu,
     staff_actions_menu,
 )
@@ -51,6 +52,13 @@ async def menu_staff(message: Message, staff: Staff | None = None):
     if staff is None or staff.role != StaffRole.admin:
         return
     await message.answer("👥 Управление сотрудниками:", reply_markup=staff_actions_menu())
+
+
+@router.message(F.text == "🏕 Отряды")
+async def menu_squads(message: Message, staff: Staff | None = None):
+    if staff is None or staff.role != StaffRole.admin:
+        return
+    await message.answer("🏕 Управление отрядами:", reply_markup=squads_menu())
 
 
 @router.message(F.text == "🏕 Смены")

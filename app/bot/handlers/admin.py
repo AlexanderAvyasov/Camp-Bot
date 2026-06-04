@@ -42,6 +42,23 @@ async def cb_cancel_fsm(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+@router.callback_query(F.data == "find_replacement")
+async def cb_find_replacement(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None or staff.role != StaffRole.admin:
+        await callback.answer("⛔ Нет прав", show_alert=True)
+        return
+    await callback.message.edit_text(
+        "🔍 Поиск замены\n\nВыберите роль:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="👤 Вожатый", callback_data="free_staff:counselor")],
+            [InlineKeyboardButton(text="⭐ Старший вожатый", callback_data="free_staff:senior_counselor")],
+            [InlineKeyboardButton(text="🧑‍🏫 Воспитатель", callback_data="free_staff:educator")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm")],
+        ]),
+    )
+    await callback.answer()
+
+
 # --- Sections via inline from reply menu ---
 
 @router.callback_query(F.data == "staff_section")

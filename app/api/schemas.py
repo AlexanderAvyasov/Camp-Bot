@@ -65,3 +65,40 @@ class DayScheduleCreate(BaseModel):
     day_type: DayType
     time: time
     label: str
+
+
+class SquadStaffOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    full_name: str
+    role: StaffRole
+    telegram_id: int
+
+
+class SquadDetailOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    counselor_id: int | None
+    educator_id: int | None
+    counselor: SquadStaffOut | None
+    educator: SquadStaffOut | None
+
+
+class SquadCreate(BaseModel):
+    name: str
+    counselor_id: int | None = None
+    educator_id: int | None = None
+
+
+class SquadUpdate(BaseModel):
+    counselor_id: int | None = None
+    educator_id: int | None = None
+
+
+class FreeStaffOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    full_name: str
+    role: StaffRole
+    telegram_id: int

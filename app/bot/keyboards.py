@@ -16,10 +16,21 @@ def admin_reply_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="👥 Сотрудники"), KeyboardButton(text="🏕 Смены")],
-            [KeyboardButton(text="📅 Расписание"), KeyboardButton(text="👤 Мой профиль")],
+            [KeyboardButton(text="🏕 Отряды"), KeyboardButton(text="📅 Расписание")],
+            [KeyboardButton(text="👤 Мой профиль")],
         ],
         resize_keyboard=True,
         persistent=True,
+    )
+
+
+def squads_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Список отрядов", callback_data="squad_list")],
+            [InlineKeyboardButton(text="➕ Новый отряд", callback_data="squad_new")],
+            [InlineKeyboardButton(text="🔍 Найти замену", callback_data="find_replacement")],
+        ]
     )
 
 
