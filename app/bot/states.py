@@ -122,3 +122,8 @@ class DutyDoneFSM(StatesGroup):
 class TaskPauseFSM(StatesGroup):
     waiting_task_id = State()
     waiting_days = State()
+
+
+class ChildrenImportFSM(StatesGroup):
+    waiting_squad = State()
+    waiting_file = State()

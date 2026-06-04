@@ -12,6 +12,7 @@ from aiogram.types import (
     Message,
 )
 
+from app.bot.states import ChildrenImportFSM
 from app.db.base import async_session_factory
 from app.db.crud import (
     get_child_by_id,
@@ -27,15 +28,26 @@ router = Router(name="children")
 _ADMIN_ROLES = {StaffRole.admin, StaffRole.senior_counselor}
 _D_FMT = "%d.%m.%Y"
 
-_import_pending: dict[int, bool] = {}
+_SQUAD_NAMES = [f"Отряд {i}" for i in range(1, 15)]
+
+
+def _squad_select_kb() -> InlineKeyboardMarkup:
+    rows = []
+    for i in range(0, 14, 2):
+        row = [InlineKeyboardButton(text=_SQUAD_NAMES[i], callback_data=f"import_squad:{_SQUAD_NAMES[i]}")]
+        if i + 1 < 14:
+            row.append(InlineKeyboardButton(text=_SQUAD_NAMES[i + 1], callback_data=f"import_squad:{_SQUAD_NAMES[i + 1]}"))
+        rows.append(row)
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _child_card(child) -> str:
     squad = child.squad.name if child.squad else "—"
     bd = child.birth_date.strftime(_D_FMT) if child.birth_date else "—"
     raw = child.raw_data or {}
-    address = raw.get("Адрес", "—")
-    voucher = raw.get("voucher", "—")
+    voucher_raw = str(raw.get("voucher", "") or "")
+    voucher = voucher_raw.zfill(6) if voucher_raw.isdigit() else (voucher_raw or "—")
 
     parents_lines = []
     for p in child.parents:
@@ -50,9 +62,8 @@ def _child_card(child) -> str:
 
     return (
         f"👦 <b>{child.full_name}</b>\n"
-        f"Дата рождения: {bd}\n"
         f"Отряд: {squad}\n"
-        f"Адрес: {address}\n"
+        f"Дата рождения: {bd}\n"
         f"№ путёвки: {voucher}"
         + parents_text
     )
@@ -204,35 +215,55 @@ async def handle_web_app_data(message: Message, staff: Staff | None = None):
     )
 
 
-# ── /children_import ──────────────────────────────────────────────────────────
+# ── /children_import — шаг 1: выбор отряда ───────────────────────────────────
+
+async def _start_import(message_or_callback, state: FSMContext):
+    """Показывает выбор отряда и переводит в FSM."""
+    kb = _squad_select_kb()
+    if isinstance(message_or_callback, Message):
+        await message_or_callback.answer(
+            "📊 <b>Импорт детей из Excel</b>\n\nВыберите отряд для импортируемых детей:",
+            reply_markup=kb, parse_mode="HTML",
+        )
+    else:
+        await message_or_callback.message.answer(
+            "📊 <b>Импорт детей из Excel</b>\n\nВыберите отряд для импортируемых детей:",
+            reply_markup=kb, parse_mode="HTML",
+        )
+        await message_or_callback.answer()
+    await state.set_state(ChildrenImportFSM.waiting_squad)
+
 
 @router.message(Command("children_import"))
-async def cmd_children_import(message: Message, staff: Staff | None = None):
+async def cmd_children_import(message: Message, state: FSMContext, staff: Staff | None = None):
     if staff is None or staff.role not in _ADMIN_ROLES:
         await message.answer("⛔ У вас нет прав.")
         return
-    _import_pending[message.from_user.id] = True
-    await message.answer(
-        "📊 <b>Импорт детей из Excel</b>\n\nОтправьте файл .xlsx.\n"
-        "Отряд будет определён автоматически из заголовка списка.",
+    await _start_import(message, state)
+
+
+@router.callback_query(ChildrenImportFSM.waiting_squad, F.data.startswith("import_squad:"))
+async def fsm_import_squad(callback: CallbackQuery, state: FSMContext):
+    squad_name = callback.data.split(":", 1)[1]
+    await state.update_data(import_squad_name=squad_name)
+    await callback.message.edit_text(
+        f"✅ Отряд: <b>{squad_name}</b>\n\nТеперь отправьте файл <b>.xlsx</b>:",
         parse_mode="HTML",
     )
+    await state.set_state(ChildrenImportFSM.waiting_file)
+    await callback.answer()
 
 
-@router.message(F.document)
-async def handle_excel_import(message: Message, staff: Staff | None = None):
-    if staff is None or staff.role not in _ADMIN_ROLES:
-        return
-    if not _import_pending.get(message.from_user.id):
-        return
-    _import_pending.pop(message.from_user.id, None)
+# ── Шаг 2: приём файла и импорт ──────────────────────────────────────────────
 
+async def _do_import(message: Message, state: FSMContext, squad_name: str):
     doc: Document = message.document
     if not doc.file_name.endswith((".xlsx", ".xls")):
-        await message.answer("❌ Нужен файл .xlsx или .xls")
+        await message.answer("❌ Нужен файл .xlsx или .xls. Отправьте ещё раз:")
         return
 
-    await message.answer("⏳ Обрабатываю файл...")
+    await message.answer(f"⏳ Обрабатываю файл для <b>{squad_name}</b>...", parse_mode="HTML")
+    await state.clear()
 
     file = await message.bot.get_file(doc.file_id)
     buf = BytesIO()
@@ -249,25 +280,22 @@ async def handle_excel_import(message: Message, staff: Staff | None = None):
 
     async with async_session_factory() as session:
         squads = await get_all_squads(session)
-    squad_map: dict = {}
-    for s in squads:
-        squad_map[s.name.strip().lower()] = s.id
-        squad_map[s.name.strip()] = s.id
+    squad_map: dict = {s.name.strip(): s.id for s in squads}
+    squad_map.update({s.name.strip().lower(): s.id for s in squads})
+
+    selected_squad_id = squad_map.get(squad_name) or squad_map.get(squad_name.lower())
 
     added = updated = 0
     errors = []
     async with async_session_factory() as session:
         for row in rows:
             try:
-                squad_name = row.pop("squad_name", None)
-                squad_id = None
-                if squad_name:
-                    squad_id = squad_map.get(squad_name.lower()) or squad_map.get(squad_name)
+                row.pop("squad_name", None)
                 _, is_new = await upsert_child(
                     session,
                     full_name=row["full_name"],
                     birth_date=row.get("birth_date"),
-                    squad_id=squad_id,
+                    squad_id=selected_squad_id,
                     dormitory=row.get("dormitory"),
                     food_type=row.get("food_type"),
                     allergies=row.get("allergies"),
@@ -286,12 +314,21 @@ async def handle_excel_import(message: Message, staff: Staff | None = None):
         except Exception as e:
             errors.append(f"commit: {e}"[:80])
 
-    result = f"✅ <b>Импорт завершён</b>\n\nДобавлено: {added}\nОбновлено: {updated}"
+    result = f"✅ <b>Импорт завершён</b>\nОтряд: <b>{squad_name}</b>\n\nДобавлено: {added}\nОбновлено: {updated}"
     if warnings:
         result += f"\n\n⚠️ Предупреждения ({len(warnings)}):\n" + "\n".join(warnings[:5])
     if errors:
         result += f"\n\n❌ Ошибки ({len(errors)}):\n" + "\n".join(errors[:3])
     await message.answer(result, parse_mode="HTML")
+
+
+@router.message(ChildrenImportFSM.waiting_file, F.document)
+async def fsm_import_file(message: Message, state: FSMContext, staff: Staff | None = None):
+    if staff is None or staff.role not in _ADMIN_ROLES:
+        await state.clear()
+        return
+    data = await state.get_data()
+    await _do_import(message, state, data.get("import_squad_name", "Неизвестный отряд"))
 
 
 # ── Кнопка «Дети» в меню ──────────────────────────────────────────────────────
@@ -317,10 +354,8 @@ async def cb_children_search_prompt(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "children_import_prompt")
-async def cb_children_import_prompt(callback: CallbackQuery, staff: Staff | None = None):
+async def cb_children_import_prompt(callback: CallbackQuery, state: FSMContext, staff: Staff | None = None):
     if staff is None or staff.role not in _ADMIN_ROLES:
         await callback.answer("⛔ Нет прав", show_alert=True)
         return
-    _import_pending[callback.from_user.id] = True
-    await callback.message.answer("📊 Отправьте файл Excel (.xlsx) для импорта детей.")
-    await callback.answer()
+    await _start_import(callback, state)
