@@ -16,8 +16,6 @@ const AnnouncementsPage = lazy(() => import('./pages/Announcements/Announcements
 const IncidentsPage = lazy(() => import('./pages/Incidents/IncidentsPage'));
 const AnalyticsPage = lazy(() => import('./pages/Analytics/AnalyticsPage'));
 
-const tg = window.Telegram?.WebApp;
-
 function getTabsForRole(role) {
   const adminTabs = [
     { id: 'home', label: 'Главная', icon: '🏠' },
