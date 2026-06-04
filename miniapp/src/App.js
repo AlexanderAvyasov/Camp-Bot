@@ -55,12 +55,6 @@ function getTabsForRole(role) {
   return adminTabs;
 }
 
-const PlaceholderPage = ({ title }) => (
-  <div style={{ padding: 20, fontSize: 16, color: 'var(--color-text-secondary)' }}>
-    {title} — страница в разработке
-  </div>
-);
-
 export default function App() {
   const [activeTab, setActiveTab] = useState('home');
   const { staff, loading: authLoading } = useAuth();
