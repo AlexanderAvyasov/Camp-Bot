@@ -12,7 +12,7 @@ from app.bot.keyboards import (
     tasks_staff_menu,
 )
 from app.db.base import async_session_factory
-from app.db.crud import get_active_session, get_schedule
+from app.db.crud import get_active_session, get_schedule, log_action
 from app.db.models import ROLE_LABELS, Staff, StaffRole
 from app.config import settings
 
@@ -50,6 +50,9 @@ async def cmd_start(message: Message, staff: Staff | None = None):
             "Обратитесь к администратору для получения доступа."
         )
         return
+
+    async with async_session_factory() as session:
+        await log_action(session, staff.id, "login")
 
     is_new = staff.telegram_id not in _onboarded
     if is_new:

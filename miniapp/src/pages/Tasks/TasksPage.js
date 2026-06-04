@@ -157,6 +157,7 @@ export default function TasksPage({ staff }) {
       assigned_to: form.assigned_to ? Number(form.assigned_to) : undefined,
       priority: form.priority,
       deadline: form.deadline || undefined,
+      created_by: staff?.id,
     })
       .then(() => {
         load();

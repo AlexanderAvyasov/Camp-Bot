@@ -171,6 +171,13 @@ async def cl_check_item(callback: CallbackQuery):
         await confirm_checklist_item(session, result_id)
         run = await get_checklist_run(session, run_id)
     if run:
+        all_done = all(r.confirmed_at for r in run.results)
+        if all_done and not run.completed_at:
+            await callback.answer("✅ Все пункты выполнены — чек-лист завершён!")
+            await callback.message.edit_text(f"✅ Чек-лист завершён! {len(run.results)}/{len(run.results)} выполнено.")
+            async with async_session_factory() as session:
+                await complete_checklist_run(session, run_id)
+            return
         try:
             await callback.message.edit_reply_markup(reply_markup=_run_kb(run.id, run.results))
         except Exception:

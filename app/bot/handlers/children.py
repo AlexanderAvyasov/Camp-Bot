@@ -87,8 +87,9 @@ async def cmd_child(message: Message, staff: Staff | None = None):
         await message.answer("❌ Введите имя: /child Иванов")
         return
     query = args[1].strip()
+    squad_id = staff.squad_id if staff.role == StaffRole.counselor else None
     async with async_session_factory() as session:
-        children, total = await search_children(session, search=query, limit=10)
+        children, total = await search_children(session, search=query, squad_id=squad_id, limit=10)
 
     if not children:
         await message.answer(f"❌ Ничего не найдено по запросу «{query}».")

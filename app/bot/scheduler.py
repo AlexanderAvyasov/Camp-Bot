@@ -10,6 +10,7 @@ from app.db.crud import (
     get_active_session,
     get_all_active_staff,
     get_birthdays_range,
+    get_night_duties_active,
     get_overdue_tasks,
     get_pending_reminders,
     get_recurring_tasks,
@@ -19,6 +20,7 @@ from app.db.crud import (
     mark_reminder_sent,
     update_task_status,
 )
+from app.bot.keyboards import task_action_kb
 from app.db.models import StaffRole, TaskStatus
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,8 @@ def setup_scheduler(bot, admin_telegram_ids: list[int]) -> AsyncIOScheduler:
     scheduler.add_job(send_pending_reminders, "interval", minutes=5, id="reminders")
     scheduler.add_job(birthday_check, "cron", hour=8, minute=5, id="birthday_check")
     scheduler.add_job(circle_reminders, "interval", minutes=15, id="circle_reminders")
+    scheduler.add_job(duty_reminders, "interval", minutes=10, id="duty_reminders")
+    scheduler.add_job(check_night_duties, "cron", hour=3, minute=0, id="night_duty_check")
     return scheduler
 
 
@@ -105,11 +109,11 @@ async def spawn_recurring():
                 try:
                     assignee = await get_staff_by_id(session, new_task.assigned_to)
                     if assignee:
-                        from app.bot.handlers.tasks import _task_text, _task_inline_kb
-                        kb = _task_inline_kb(new_task.id, is_assignee=True)
+                        from app.bot.handlers.tasks import _task_text
+                        kb = task_action_kb(new_task.id, new_task.status, is_assignee=True)
                         await _bot.send_message(
                             assignee.telegram_id,
-                            f"📋 Повторяющаяся задача!\n\n{_task_text(new_task, show_assignee=False)}",
+                            f"📋 Повторяющаяся задача!\n\n{_task_text(new_task)}",
                             reply_markup=kb,
                             parse_mode="HTML",
                         )
@@ -245,3 +249,54 @@ async def circle_reminders():
                             )
                         except Exception:
                             pass
+
+
+# ── Duty reminders (morning-of notification) ─────────────────────────────────
+
+async def duty_reminders():
+    if _bot is None:
+        return
+    from app.db.models import DutyStatus
+    today = date.today()
+    async with async_session_factory() as session:
+        sess = await get_active_session(session)
+        if not sess:
+            return
+        from app.db.crud import get_duties_by_date
+        duties = await get_duties_by_date(session, today, sess.id)
+
+    for duty in duties:
+        if duty.status == DutyStatus.scheduled and duty.staff and duty.staff.telegram_id:
+            try:
+                from app.db.models import DUTY_TYPE_LABELS
+                type_label = DUTY_TYPE_LABELS.get(duty.type, str(duty.type))
+                await _bot.send_message(
+                    duty.staff.telegram_id,
+                    f"🔔 Напоминание: сегодня у вас дежурство <b>{type_label}</b>.",
+                    parse_mode="HTML",
+                )
+            except Exception as e:
+                logger.warning("Failed to send duty reminder: %s", e)
+
+
+# ── Night duty missed checkpoint alert ───────────────────────────────────────
+
+async def check_night_duties():
+    if _bot is None:
+        return
+    async with async_session_factory() as session:
+        duties = await get_night_duties_active(session)
+
+    for duty in duties:
+        last_cp = max(duty.checkpoints, key=lambda c: c.confirmed_at, default=None) if duty.checkpoints else None
+        midnight = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
+        if last_cp is None or last_cp.confirmed_at < midnight:
+            for admin_tg_id in _admin_ids:
+                try:
+                    await _bot.send_message(
+                        admin_tg_id,
+                        f"⚠️ Ночное дежурство (ID: {duty.id}) — нет отметки с полуночи!",
+                        parse_mode="HTML",
+                    )
+                except Exception as e:
+                    logger.warning("Failed to alert night duty: %s", e)

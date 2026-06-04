@@ -18,6 +18,7 @@ from app.db.crud import (
     check_responsible_conflict,
     copy_event,
     create_event,
+    create_event_reminders,
     delete_event,
     get_active_session,
     get_all_active_staff,
@@ -418,6 +419,8 @@ async def fsm_ev_confirm(callback: CallbackQuery, state: FSMContext, staff: Staf
             session_id=active.id if active else None,
             member_ids=data.get("member_ids") or [],
         )
+        member_staff_ids = [m.staff_id for m in event.members]
+        await create_event_reminders(session, event.id, member_staff_ids, start)
         member_tg_ids = [m.staff.telegram_id for m in event.members if m.staff]
 
     await callback.message.edit_text(f"✅ Мероприятие создано!\n\n{_event_text(event)}", parse_mode="HTML")

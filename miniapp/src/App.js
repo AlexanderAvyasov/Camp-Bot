@@ -12,6 +12,9 @@ import Loader from './components/Loader';
 
 const DutiesPage = lazy(() => import('./pages/Duties/DutiesPage').catch(() => ({ default: () => <div style={{ padding: 20 }}>Дежурства — страница в разработке</div> })));
 const CirclesPage = lazy(() => import('./pages/Circles/CirclesPage').catch(() => ({ default: () => <div style={{ padding: 20 }}>Кружки — страница в разработке</div> })));
+const AnnouncementsPage = lazy(() => import('./pages/Announcements/AnnouncementsPage'));
+const IncidentsPage = lazy(() => import('./pages/Incidents/IncidentsPage'));
+const AnalyticsPage = lazy(() => import('./pages/Analytics/AnalyticsPage'));
 
 const tg = window.Telegram?.WebApp;
 
@@ -22,6 +25,7 @@ function getTabsForRole(role) {
     { id: 'calendar', label: 'Календарь', icon: '📅' },
     { id: 'children', label: 'Дети', icon: '👦' },
     { id: 'management', label: 'Управление', icon: '⚙️' },
+    { id: 'analytics', label: 'Аналитика', icon: '📊' },
   ];
   const counselorTabs = [
     { id: 'home', label: 'Главная', icon: '🏠' },
@@ -95,9 +99,23 @@ export default function App() {
           </Suspense>
         );
       case 'incidents':
-        return <PlaceholderPage title="Инциденты" />;
+        return (
+          <Suspense fallback={<Loader center />}>
+            <IncidentsPage staff={staff} />
+          </Suspense>
+        );
       case 'announcements':
-        return <PlaceholderPage title="Объявления" />;
+        return (
+          <Suspense fallback={<Loader center />}>
+            <AnnouncementsPage staff={staff} />
+          </Suspense>
+        );
+      case 'analytics':
+        return (
+          <Suspense fallback={<Loader center />}>
+            <AnalyticsPage staff={staff} />
+          </Suspense>
+        );
       default:
         return <HomePage staff={staff} />;
     }

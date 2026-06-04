@@ -196,6 +196,32 @@ async def menu_children(message: Message, staff: Staff | None = None):
     )
 
 
+@router.callback_query(F.data == "ch_my_squad")
+async def cb_my_squad(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None:
+        return await callback.answer()
+    from app.db.crud import search_children
+    from aiogram.types import InlineKeyboardMarkup
+    if not staff.squad_id:
+        await callback.message.edit_text("❌ Вы не привязаны к отряду.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[]))
+        await callback.answer()
+        return
+    async with async_session_factory() as session:
+        children, total = await search_children(session, squad_id=staff.squad_id, limit=50)
+    if not children:
+        await callback.message.edit_text("📭 В вашем отряде нет детей.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[]))
+        await callback.answer()
+        return
+    from aiogram.types import InlineKeyboardButton
+    rows = [[InlineKeyboardButton(text=f"👦 {c.full_name}", callback_data=f"child_view:{c.id}")] for c in children]
+    await callback.message.edit_text(
+        f"👦 <b>Мой отряд</b> ({total} чел.):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
 @router.callback_query(F.data == "ch_birthdays")
 async def cb_birthdays(callback: CallbackQuery):
     from app.db.crud import get_birthdays_range

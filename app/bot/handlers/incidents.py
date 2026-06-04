@@ -158,7 +158,7 @@ async def _save_incident(message: Message, state: FSMContext, staff: Staff | Non
         f"Описание: {inc.description}"
     )
     for s in all_staff:
-        if s.role in _ADMIN_ROLES or (inc.type == "медицинский" and s.role == StaffRole.coach):
+        if s.role in _ADMIN_ROLES or (inc.type == "медицинский" and s.role == StaffRole.senior_counselor):
             try:
                 await bot.send_message(s.telegram_id, alert, parse_mode="HTML")
                 if data.get("photo_url"):

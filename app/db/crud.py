@@ -280,12 +280,11 @@ async def get_task_by_id(session: AsyncSession, task_id: int) -> Task | None:
     return result.scalar_one_or_none()
 
 
-async def get_tasks_for_staff(session: AsyncSession, staff_id: int) -> list[Task]:
-    result = await session.execute(
-        select(Task)
-        .where(Task.assigned_to == staff_id, Task.status != TaskStatus.done)
-        .order_by(Task.priority.desc(), Task.deadline)
-    )
+async def get_tasks_for_staff(session: AsyncSession, staff_id: int, session_id: Optional[int] = None) -> list[Task]:
+    q = select(Task).where(Task.assigned_to == staff_id, Task.status != TaskStatus.done)
+    if session_id:
+        q = q.where(Task.session_id == session_id)
+    result = await session.execute(q.order_by(Task.priority.desc(), Task.deadline))
     return list(result.scalars().all())
 
 
@@ -322,6 +321,7 @@ async def get_overdue_tasks(session: AsyncSession) -> list[Task]:
         select(Task).where(
             Task.deadline < now,
             Task.status.not_in([TaskStatus.done, TaskStatus.overdue]),
+            or_(Task.paused_until == None, Task.paused_until < now.date()),
         )
     )
     return list(result.scalars().all())
