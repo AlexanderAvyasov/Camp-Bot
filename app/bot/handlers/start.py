@@ -4,20 +4,33 @@ from aiogram.types import Message
 
 from app.bot.keyboards import (
     admin_reply_menu,
+    calendar_menu,
     schedule_menu,
     sessions_menu,
     squads_menu,
-    staff_reply_menu,
     staff_actions_menu,
+    staff_reply_menu,
     tasks_admin_menu,
     tasks_staff_menu,
 )
-from app.bot.texts import ONBOARDING
+from app.db.base import async_session_factory
+from app.db.crud import get_active_session, get_schedule
 from app.db.models import ROLE_LABELS, Staff, StaffRole
 
 router = Router(name="start")
 
 _onboarded: set[int] = set()
+
+_ONBOARDING = {
+    StaffRole.admin: "👋 Добро пожаловать, Администратор!\n\nИспользуйте кнопки меню внизу для управления лагерем.",
+    StaffRole.senior_counselor: "👋 Добро пожаловать, Старший вожатый!\n\nИспользуйте кнопки меню внизу.",
+    StaffRole.counselor: "👋 Добро пожаловать, Вожатый!\n\nИспользуйте кнопки меню внизу.",
+    StaffRole.educator: "👋 Добро пожаловать, Воспитатель!\n\nИспользуйте кнопки меню внизу.",
+    StaffRole.coach: "👋 Добро пожаловать, Тренер!\n\nИспользуйте кнопки меню внизу.",
+    StaffRole.swim_coach: "👋 Добро пожаловать, Тренер по плаванию!\n\nИспользуйте кнопки меню внизу.",
+    StaffRole.music: "👋 Добро пожаловать, Музыкальный руководитель!\n\nИспользуйте кнопки меню внизу.",
+    StaffRole.circle_leader: "👋 Добро пожаловать, Руководитель кружка!\n\nИспользуйте кнопки меню внизу.",
+}
 
 
 async def _show_main_menu(message: Message, staff: Staff):
@@ -41,7 +54,7 @@ async def cmd_start(message: Message, staff: Staff | None = None):
     is_new = staff.telegram_id not in _onboarded
     if is_new:
         _onboarded.add(staff.telegram_id)
-        onboarding_text = ONBOARDING.get(staff.role, "👋 Добро пожаловать!")
+        onboarding_text = _ONBOARDING.get(staff.role, "👋 Добро пожаловать!")
         await message.answer(onboarding_text)
 
     await _show_main_menu(message, staff)
@@ -53,21 +66,21 @@ async def cmd_start(message: Message, staff: Staff | None = None):
 async def menu_staff(message: Message, staff: Staff | None = None):
     if staff is None or staff.role != StaffRole.admin:
         return
-    await message.answer("👥 Управление сотрудниками:", reply_markup=staff_actions_menu())
+    await message.answer("👥 <b>Управление сотрудниками</b>:", reply_markup=staff_actions_menu(), parse_mode="HTML")
 
 
 @router.message(F.text == "🏕 Отряды")
 async def menu_squads(message: Message, staff: Staff | None = None):
     if staff is None or staff.role != StaffRole.admin:
         return
-    await message.answer("🏕 Управление отрядами:", reply_markup=squads_menu())
+    await message.answer("🏕 <b>Управление отрядами</b>:", reply_markup=squads_menu(), parse_mode="HTML")
 
 
 @router.message(F.text == "🏕 Смены")
 async def menu_sessions(message: Message, staff: Staff | None = None):
     if staff is None or staff.role != StaffRole.admin:
         return
-    await message.answer("🏕 Управление сменами:", reply_markup=sessions_menu())
+    await message.answer("🏕 <b>Управление сменами</b>:", reply_markup=sessions_menu(), parse_mode="HTML")
 
 
 @router.message(F.text == "📅 Расписание")
@@ -75,11 +88,8 @@ async def menu_schedule(message: Message, staff: Staff | None = None):
     if staff is None:
         return
     if staff.role == StaffRole.admin:
-        await message.answer("📅 Расписание:", reply_markup=schedule_menu())
+        await message.answer("📅 <b>Расписание</b>:", reply_markup=sessions_menu(), parse_mode="HTML")
     else:
-        # Для не-админов сразу показываем расписание активной смены
-        from app.db.base import async_session_factory
-        from app.db.crud import get_active_session, get_schedule
         async with async_session_factory() as session:
             active = await get_active_session(session)
             if not active:
@@ -94,27 +104,17 @@ async def menu_schedule(message: Message, staff: Staff | None = None):
 async def menu_calendar(message: Message, staff: Staff | None = None):
     if staff is None:
         return
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    await message.answer(
-        "🗓 Календарь мероприятий",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="📅 Сегодня", callback_data="cal:today"),
-                InlineKeyboardButton(text="📆 Неделя", callback_data="cal:week"),
-            ],
-            [InlineKeyboardButton(text="👤 Мой график", callback_data="cal:my")],
-        ]),
-    )
+    await message.answer("🗓 <b>Календарь мероприятий</b>:", reply_markup=calendar_menu(), parse_mode="HTML")
 
 
 @router.message(F.text == "✅ Задачи")
 async def menu_tasks(message: Message, staff: Staff | None = None):
     if staff is None:
         return
-    if staff.role == StaffRole.admin:
-        await message.answer("✅ Управление задачами:", reply_markup=tasks_admin_menu())
+    if staff.role in {StaffRole.admin, StaffRole.senior_counselor}:
+        await message.answer("✅ <b>Управление задачами</b>:", reply_markup=tasks_admin_menu(), parse_mode="HTML")
     else:
-        await message.answer("✅ Мои задачи:", reply_markup=tasks_staff_menu())
+        await message.answer("✅ <b>Мои задачи</b>:", reply_markup=tasks_staff_menu(), parse_mode="HTML")
 
 
 @router.message(F.text == "👤 Мой профиль")
@@ -129,3 +129,14 @@ async def menu_profile(message: Message, staff: Staff | None = None):
         f"Telegram ID: <code>{staff.telegram_id}</code>",
         parse_mode="HTML",
     )
+
+
+# ── Навигация из инлайн меню ──────────────────────────────────────────────────
+
+@router.callback_query(F.data == "tasks_back")
+async def cb_tasks_back(callback, staff: Staff | None = None):
+    if staff and staff.role in {StaffRole.admin, StaffRole.senior_counselor}:
+        await callback.message.edit_text("✅ <b>Задачи</b>:", reply_markup=tasks_admin_menu(), parse_mode="HTML")
+    elif staff:
+        await callback.message.edit_text("✅ <b>Мои задачи</b>:", reply_markup=tasks_staff_menu(), parse_mode="HTML")
+    await callback.answer()

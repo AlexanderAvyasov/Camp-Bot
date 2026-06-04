@@ -28,14 +28,15 @@ class SquadNewFSM(StatesGroup):
 
 class SquadEditFSM(StatesGroup):
     waiting_field = State()
-    waiting_staff = State()
+    waiting_value = State()
 
 
 class TaskCreateFSM(StatesGroup):
-    waiting_assignee = State()
     waiting_title = State()
-    waiting_deadline = State()
+    waiting_group = State()
+    waiting_assignee = State()
     waiting_priority = State()
+    waiting_deadline = State()
 
 
 class TemplateFSM(StatesGroup):
@@ -44,6 +45,12 @@ class TemplateFSM(StatesGroup):
     waiting_role = State()
     waiting_priority = State()
     waiting_recurrence = State()
+
+
+class TaskFromTemplateFSM(StatesGroup):
+    waiting_group = State()
+    waiting_assignee = State()
+    waiting_deadline = State()
 
 
 class EventAddFSM(StatesGroup):
@@ -60,3 +67,7 @@ class EventAddFSM(StatesGroup):
 class EventEditFSM(StatesGroup):
     waiting_field = State()
     waiting_value = State()
+
+
+class EventCopyFSM(StatesGroup):
+    waiting_date = State()

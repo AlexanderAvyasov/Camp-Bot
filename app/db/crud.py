@@ -133,6 +133,16 @@ async def update_squad(
     return await get_squad_by_id(session, squad_id)
 
 
+async def get_staff_by_role(session: AsyncSession, role: StaffRole) -> list[Staff]:
+    result = await session.execute(
+        select(Staff).where(
+            Staff.role == role,
+            Staff.is_active == True,
+        ).order_by(Staff.full_name)
+    )
+    return list(result.scalars().all())
+
+
 async def get_free_staff_by_role(session: AsyncSession, role: StaffRole) -> list[Staff]:
     result = await session.execute(
         select(Staff).where(

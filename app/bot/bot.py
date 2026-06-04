@@ -17,6 +17,12 @@ from app.db.models import StaffRole
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+_bot_instance: Bot | None = None
+
+
+def get_bot() -> Bot | None:
+    return _bot_instance
+
 
 async def _get_admin_telegram_ids() -> list[int]:
     async with async_session_factory() as session:
@@ -25,10 +31,12 @@ async def _get_admin_telegram_ids() -> list[int]:
 
 
 async def main():
+    global _bot_instance
     bot = Bot(
         token=settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
+    _bot_instance = bot
     dp = Dispatcher(storage=MemoryStorage())
 
     dp.message.middleware(StaffMiddleware())

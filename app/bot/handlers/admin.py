@@ -1,40 +1,52 @@
 from aiogram import F, Router
-from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from app.bot.keyboards import pagination_keyboard, role_menu
-from app.bot.middleware import require_role
+from app.bot.keyboards import (
+    cancel_kb,
+    confirm_kb,
+    pagination_keyboard,
+    role_menu,
+    staff_actions_menu,
+    staff_item_kb,
+)
 from app.bot.states import AddStaffFSM
 from app.bot.texts import format_staff_item
+from app.db.base import async_session_factory
 from app.db.crud import (
     create_staff,
     deactivate_staff,
     get_all_staff_paginated,
+    get_staff_by_id,
     get_staff_by_telegram_id,
     log_action,
+    update_staff,
 )
 from app.db.models import ROLE_LABELS, Staff, StaffRole
-from app.db.base import async_session_factory
 
 router = Router(name="admin")
 
 PAGE_SIZE = 5
+_ADMIN_ROLES = {StaffRole.admin}
 
 
-# --- /staff_list ---
+# ── cancel FSM ────────────────────────────────────────────────────────────────
 
-@router.message(Command("staff_list"))
-async def cmd_staff_list(message: Message, staff: Staff | None = None):
-    if staff is None or staff.role != StaffRole.admin:
-        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
-        return
-    await _send_staff_page(message, page=0)
+@router.callback_query(F.data == "cancel_fsm")
+async def cb_cancel_fsm(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    try:
+        await callback.message.edit_text("❌ Действие отменено.")
+    except Exception:
+        await callback.message.answer("❌ Действие отменено.")
+    await callback.answer()
 
+
+# ── Список сотрудников ────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("staff_list:"))
 async def cb_staff_list(callback: CallbackQuery, staff: Staff | None = None):
-    if staff is None or staff.role != StaffRole.admin:
+    if staff is None or staff.role not in _ADMIN_ROLES:
         await callback.answer("⛔ Нет прав", show_alert=True)
         return
     page = int(callback.data.split(":")[1])
@@ -48,43 +60,69 @@ async def _send_staff_page(message: Message, page: int, edit: bool = False):
 
     if not items:
         text = "📋 Список сотрудников пуст."
-        markup = None
+        markup = staff_actions_menu()
     else:
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
         total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
         lines = [f"📋 <b>Сотрудники</b> (стр. {page + 1}/{total_pages})\n"]
         for s in items:
             lines.append(format_staff_item(s))
         text = "\n\n".join(lines)
-        markup = pagination_keyboard(page, total_pages)
+
+        # Кнопки для каждого сотрудника + пагинация
+        builder = InlineKeyboardBuilder()
+        for s in items:
+            builder.button(
+                text=f"{'✅' if s.is_active else '❌'} {s.full_name}",
+                callback_data=f"staff_item:{s.id}",
+            )
+        builder.adjust(1)
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(text="◀️", callback_data=f"staff_list:{page - 1}"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton(text="▶️", callback_data=f"staff_list:{page + 1}"))
+        if nav:
+            builder.row(*nav)
+        builder.row(InlineKeyboardButton(text="➕ Добавить", callback_data="add_staff"))
+        markup = builder.as_markup()
 
     if edit:
-        await message.edit_text(text, reply_markup=markup, parse_mode="HTML")
+        try:
+            await message.edit_text(text, reply_markup=markup, parse_mode="HTML")
+        except Exception:
+            await message.answer(text, reply_markup=markup, parse_mode="HTML")
     else:
         await message.answer(text, reply_markup=markup, parse_mode="HTML")
 
 
-# --- /add_staff FSM ---
-
-@router.message(Command("add_staff"))
-async def cmd_add_staff(message: Message, state: FSMContext, staff: Staff | None = None):
-    if staff is None or staff.role != StaffRole.admin:
-        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
+@router.callback_query(F.data.startswith("staff_item:"))
+async def cb_staff_item(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None or staff.role not in _ADMIN_ROLES:
+        await callback.answer("⛔ Нет прав", show_alert=True)
         return
-    await message.answer(
-        "➕ Добавление сотрудника\n\nВведите <b>Telegram ID</b> нового сотрудника:",
-        parse_mode="HTML",
-    )
-    await state.set_state(AddStaffFSM.waiting_telegram_id)
+    staff_id = int(callback.data.split(":")[1])
+    async with async_session_factory() as session:
+        target = await get_staff_by_id(session, staff_id)
+    if not target:
+        await callback.answer("❌ Сотрудник не найден", show_alert=True)
+        return
+    text = format_staff_item(target)
+    await callback.message.edit_text(text, reply_markup=staff_item_kb(staff_id), parse_mode="HTML")
+    await callback.answer()
 
+
+# ── Добавить сотрудника FSM ───────────────────────────────────────────────────
 
 @router.callback_query(F.data == "add_staff")
 async def cb_add_staff(callback: CallbackQuery, state: FSMContext, staff: Staff | None = None):
-    if staff is None or staff.role != StaffRole.admin:
+    if staff is None or staff.role not in _ADMIN_ROLES:
         await callback.answer("⛔ Нет прав", show_alert=True)
         return
     await callback.message.answer(
-        "➕ Добавление сотрудника\n\nВведите <b>Telegram ID</b> нового сотрудника:",
-        parse_mode="HTML",
+        "➕ <b>Добавление сотрудника</b>\n\nВведите <b>Telegram ID</b> нового сотрудника:",
+        reply_markup=cancel_kb(), parse_mode="HTML",
     )
     await state.set_state(AddStaffFSM.waiting_telegram_id)
     await callback.answer()
@@ -142,55 +180,84 @@ async def fsm_get_role(callback: CallbackQuery, state: FSMContext, staff: Staff 
         if staff:
             await log_action(session, staff.id, "add_staff", new_staff.id)
 
-    role_label = ROLE_LABELS[role]
     await callback.message.edit_text(
         f"✅ Сотрудник добавлен!\n\n"
         f"👤 <b>{full_name}</b>\n"
-        f"Роль: {role_label}\n"
+        f"Роль: {ROLE_LABELS[role]}\n"
         f"Telegram ID: <code>{telegram_id}</code>",
+        reply_markup=staff_item_kb(new_staff.id),
         parse_mode="HTML",
     )
     await state.clear()
     await callback.answer()
 
 
-# --- /remove_staff ---
+# ── Изменить роль ─────────────────────────────────────────────────────────────
 
-@router.message(Command("remove_staff"))
-async def cmd_remove_staff(message: Message, staff: Staff | None = None):
-    if staff is None or staff.role != StaffRole.admin:
-        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
+@router.callback_query(F.data.startswith("edit_role_prompt:"))
+async def cb_edit_role_prompt(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None or staff.role not in _ADMIN_ROLES:
+        await callback.answer("⛔ Нет прав", show_alert=True)
         return
+    staff_id = int(callback.data.split(":")[1])
+    from app.bot.keyboards import staff_edit_role_keyboard
+    await callback.message.edit_text(
+        "Выберите новую роль:", reply_markup=staff_edit_role_keyboard(staff_id)
+    )
+    await callback.answer()
 
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2:
-        await message.answer(
-            "❌ Укажите Telegram ID сотрудника.\n"
-            "Формат: /remove_staff <telegram_id>"
-        )
+
+@router.callback_query(F.data.startswith("edit_role:"))
+async def cb_edit_role(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None or staff.role not in _ADMIN_ROLES:
+        await callback.answer("⛔ Нет прав", show_alert=True)
         return
-
-    target_arg = args[1].strip()
-    if not target_arg.isdigit():
-        await message.answer("❌ Telegram ID должен быть числом.")
-        return
-
-    target_telegram_id = int(target_arg)
-
+    parts = callback.data.split(":")
+    staff_id = int(parts[1])
+    role = StaffRole(parts[2])
     async with async_session_factory() as session:
-        target = await get_staff_by_telegram_id(session, target_telegram_id)
-        if not target:
-            await message.answer(f"❌ Сотрудник с ID <code>{target_telegram_id}</code> не найден.", parse_mode="HTML")
-            return
-        if not target.is_active:
-            await message.answer(f"⚠️ Сотрудник <b>{target.full_name}</b> уже деактивирован.", parse_mode="HTML")
-            return
+        target = await update_staff(session, staff_id, role=role)
+    if target:
+        await callback.message.edit_text(
+            f"✅ Роль <b>{target.full_name}</b> изменена на <b>{ROLE_LABELS[role]}</b>.",
+            reply_markup=staff_item_kb(staff_id),
+            parse_mode="HTML",
+        )
+    await callback.answer()
 
-        await deactivate_staff(session, target.id)
-        if staff:
-            await log_action(session, staff.id, "remove_staff", target.id)
 
-    await message.answer(
-        f"✅ Сотрудник <b>{target.full_name}</b> деактивирован.",
+# ── Деактивировать ────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("deactivate_staff:"))
+async def cb_deactivate_prompt(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None or staff.role not in _ADMIN_ROLES:
+        await callback.answer("⛔ Нет прав", show_alert=True)
+        return
+    staff_id = int(callback.data.split(":")[1])
+    async with async_session_factory() as session:
+        target = await get_staff_by_id(session, staff_id)
+    if not target:
+        await callback.answer("❌ Не найден", show_alert=True)
+        return
+    await callback.message.edit_text(
+        f"❗ Деактивировать <b>{target.full_name}</b>?",
+        reply_markup=confirm_kb(f"deactivate_confirm:{staff_id}", f"staff_item:{staff_id}"),
         parse_mode="HTML",
     )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("deactivate_confirm:"))
+async def cb_deactivate_confirm(callback: CallbackQuery, staff: Staff | None = None):
+    if staff is None or staff.role not in _ADMIN_ROLES:
+        await callback.answer("⛔ Нет прав", show_alert=True)
+        return
+    staff_id = int(callback.data.split(":")[1])
+    async with async_session_factory() as session:
+        target = await deactivate_staff(session, staff_id)
+    if target:
+        await callback.message.edit_text(
+            f"✅ Сотрудник <b>{target.full_name}</b> деактивирован.",
+            parse_mode="HTML",
+        )
+    await callback.answer()

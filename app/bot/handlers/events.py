@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone, date as date_type
+from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -10,7 +10,8 @@ from aiogram.types import (
     Message,
 )
 
-from app.bot.states import EventAddFSM, EventEditFSM
+from app.bot.keyboards import cancel_kb, calendar_menu
+from app.bot.states import EventAddFSM, EventCopyFSM, EventEditFSM
 from app.db.base import async_session_factory
 from app.db.crud import (
     check_location_conflict,
@@ -26,7 +27,6 @@ from app.db.crud import (
     update_event,
 )
 from app.db.models import (
-    EVENT_TYPE_COLORS,
     EVENT_TYPE_LABELS,
     ROLE_LABELS,
     EventType,
@@ -49,7 +49,6 @@ _skip_cancel_kb = InlineKeyboardMarkup(
         [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm")],
     ]
 )
-
 _event_type_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text=lbl, callback_data=f"ev_type:{t.value}")]
@@ -82,7 +81,7 @@ def _format_events_list(events: list, header: str) -> str:
         ev_date = ev.start_time.date()
         if ev_date != current_date:
             current_date = ev_date
-            lines.append(f"\n<b>{ev_date.strftime('%d.%m.%Y (%A)')}</b>")
+            lines.append(f"\n<b>{ev_date.strftime('%d.%m.%Y')}</b>")
         type_label = EVENT_TYPE_LABELS.get(ev.type, ev.type)
         location = f" | {ev.location}" if ev.location else ""
         lines.append(
@@ -92,23 +91,24 @@ def _format_events_list(events: list, header: str) -> str:
     return "\n".join(lines)
 
 
-# ── /calendar ─────────────────────────────────────────────────────────────────
+def _event_list_kb(events: list, is_admin: bool) -> InlineKeyboardMarkup:
+    rows = []
+    for ev in events:
+        rows.append([InlineKeyboardButton(
+            text=f"📅 {ev.start_time.strftime('%H:%M')} {ev.title}",
+            callback_data=f"event_view:{ev.id}",
+        )])
+    nav = [
+        InlineKeyboardButton(text="📅 Сегодня", callback_data="cal:today"),
+        InlineKeyboardButton(text="📆 Неделя", callback_data="cal:week"),
+    ]
+    rows.append(nav)
+    if is_admin:
+        rows.append([InlineKeyboardButton(text="➕ Новое мероприятие", callback_data="event_add")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
-@router.message(Command("calendar"))
-async def cmd_calendar(message: Message, staff: Staff | None = None):
-    if staff is None:
-        return
-    await message.answer(
-        "📅 Календарь мероприятий",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="📅 Сегодня", callback_data="cal:today"),
-                InlineKeyboardButton(text="📆 Неделя", callback_data="cal:week"),
-            ],
-            [InlineKeyboardButton(text="👤 Мой график", callback_data="cal:my")],
-        ]),
-    )
 
+# ── Просмотр календаря ────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "cal:today")
 async def cb_cal_today(callback: CallbackQuery, staff: Staff | None = None):
@@ -117,9 +117,9 @@ async def cb_cal_today(callback: CallbackQuery, staff: Staff | None = None):
     day_end = day_start + timedelta(days=1)
     async with async_session_factory() as session:
         events = await get_events(session, date_from=day_start, date_to=day_end)
+    is_admin = staff is not None and staff.role in _ADMIN_ROLES
     text = _format_events_list(events, f"📅 <b>Сегодня, {now.strftime('%d.%m.%Y')}</b>")
-    kb = _calendar_nav_kb(show_add=staff and staff.role in _ADMIN_ROLES)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await callback.message.edit_text(text, reply_markup=_event_list_kb(events, is_admin), parse_mode="HTML")
     await callback.answer()
 
 
@@ -129,9 +129,9 @@ async def cb_cal_week(callback: CallbackQuery, staff: Staff | None = None):
     week_end = now + timedelta(days=7)
     async with async_session_factory() as session:
         events = await get_events(session, date_from=now, date_to=week_end)
+    is_admin = staff is not None and staff.role in _ADMIN_ROLES
     text = _format_events_list(events, "📆 <b>Ближайшие 7 дней</b>")
-    kb = _calendar_nav_kb(show_add=staff and staff.role in _ADMIN_ROLES)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await callback.message.edit_text(text, reply_markup=_event_list_kb(events, is_admin), parse_mode="HTML")
     await callback.answer()
 
 
@@ -144,48 +144,55 @@ async def cb_cal_my(callback: CallbackQuery, staff: Staff | None = None):
     async with async_session_factory() as session:
         events = await get_events(session, date_from=now, staff_id=staff.id)
     text = _format_events_list(events, f"👤 <b>Мой график — {staff.full_name}</b>")
-    kb = _calendar_nav_kb(show_add=False)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="📅 Сегодня", callback_data="cal:today"),
+        InlineKeyboardButton(text="📆 Неделя", callback_data="cal:week"),
+    ]])
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
-def _calendar_nav_kb(show_add: bool = False) -> InlineKeyboardMarkup:
-    rows = [[
-        InlineKeyboardButton(text="📅 Сегодня", callback_data="cal:today"),
-        InlineKeyboardButton(text="📆 Неделя", callback_data="cal:week"),
-        InlineKeyboardButton(text="👤 Мой", callback_data="cal:my"),
-    ]]
-    if show_add:
-        rows.append([InlineKeyboardButton(text="➕ Добавить", callback_data="event_add")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+# ── Просмотр мероприятия ──────────────────────────────────────────────────────
 
-
-# ── /event_add FSM ────────────────────────────────────────────────────────────
-
-@router.message(Command("event_add"))
-async def cmd_event_add(message: Message, state: FSMContext, staff: Staff | None = None):
-    if staff is None or staff.role not in _ADMIN_ROLES:
-        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
+@router.callback_query(F.data.startswith("event_view:"))
+async def cb_event_view(callback: CallbackQuery, staff: Staff | None = None):
+    event_id = int(callback.data.split(":")[1])
+    async with async_session_factory() as session:
+        event = await get_event_by_id(session, event_id)
+    if not event:
+        await callback.answer("❌ Мероприятие не найдено", show_alert=True)
         return
-    await _start_event_add(message, state)
+    is_admin = staff is not None and staff.role in _ADMIN_ROLES
+    rows = []
+    if is_admin:
+        rows.append([
+            InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"event_edit_start:{event_id}"),
+            InlineKeyboardButton(text="🗑 Удалить", callback_data=f"event_del_confirm:{event_id}"),
+        ])
+        rows.append([InlineKeyboardButton(text="📋 Копировать", callback_data=f"event_copy_start:{event_id}")])
+    rows.append([InlineKeyboardButton(text="◀️ Назад", callback_data="cal:today")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    try:
+        await callback.message.edit_text(_event_text(event), reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(_event_text(event), reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
 
+
+# ── Добавить мероприятие FSM ──────────────────────────────────────────────────
 
 @router.callback_query(F.data == "event_add")
 async def cb_event_add(callback: CallbackQuery, state: FSMContext, staff: Staff | None = None):
     if staff is None or staff.role not in _ADMIN_ROLES:
         await callback.answer("⛔ Нет прав", show_alert=True)
         return
-    await callback.message.answer("", reply_markup=None)  # keep reply menu visible
-    await _start_event_add(callback.message, state)
-    await callback.answer()
-
-
-async def _start_event_add(message: Message, state: FSMContext):
-    await message.answer(
-        "➕ Создание мероприятия\n\nВведите <b>название</b>:",
+    await callback.message.answer(
+        "➕ <b>Новое мероприятие</b>\n\nВведите <b>название</b>:",
         reply_markup=_cancel_kb, parse_mode="HTML",
     )
     await state.set_state(EventAddFSM.waiting_title)
+    await callback.answer()
 
 
 @router.message(EventAddFSM.waiting_title)
@@ -256,8 +263,10 @@ async def _ask_members(message: Message, state: FSMContext, edit: bool = False):
         for r, lbl in ROLE_LABELS.items()
     ] + [
         [InlineKeyboardButton(text="✏️ Вручную (ID через запятую)", callback_data="ev_members_manual")],
-        [InlineKeyboardButton(text="⏭ Без участников", callback_data="ev_skip"),
-         InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm")],
+        [
+            InlineKeyboardButton(text="⏭ Без участников", callback_data="ev_skip"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm"),
+        ],
     ])
     text = "Добавить <b>участников</b>: выберите роль или введите вручную:"
     if edit:
@@ -275,7 +284,7 @@ async def fsm_ev_members_role(callback: CallbackQuery, state: FSMContext):
     ids = [s.id for s in all_staff if s.role == role]
     await state.update_data(member_ids=ids)
     await callback.message.edit_text(
-        f"Участники: все с ролью «{ROLE_LABELS[role]}» ({len(ids)} чел.)\n\nВведите <b>дату и время начала</b> (ДД.ММ.ГГГГ ЧЧ:ММ):",
+        f"Участники: все «{ROLE_LABELS[role]}» ({len(ids)} чел.)\n\nВведите <b>дату и время начала</b> (ДД.ММ.ГГГГ ЧЧ:ММ):",
         reply_markup=_cancel_kb, parse_mode="HTML",
     )
     await state.set_state(EventAddFSM.waiting_start)
@@ -288,7 +297,6 @@ async def fsm_ev_members_manual_prompt(callback: CallbackQuery, state: FSMContex
         "Введите <b>Telegram ID</b> участников через запятую:",
         reply_markup=_cancel_kb, parse_mode="HTML",
     )
-    await state.set_state(EventAddFSM.waiting_members)
     await state.update_data(_members_manual=True)
     await callback.answer()
 
@@ -297,7 +305,6 @@ async def fsm_ev_members_manual_prompt(callback: CallbackQuery, state: FSMContex
 async def fsm_ev_members_text(message: Message, state: FSMContext):
     data = await state.get_data()
     if not data.get("_members_manual"):
-        await message.answer("Используйте кнопки выше или введите ID после нажатия «Вручную».")
         return
     parts = [p.strip() for p in message.text.split(",") if p.strip().isdigit()]
     ids = []
@@ -354,7 +361,6 @@ async def fsm_ev_end(message: Message, state: FSMContext, staff: Staff | None = 
         return
     await state.update_data(end_time=dt.isoformat())
 
-    # Conflict checks
     warnings = []
     async with async_session_factory() as session:
         active = await get_active_session(session)
@@ -370,7 +376,7 @@ async def fsm_ev_end(message: Message, state: FSMContext, staff: Staff | None = 
 
     ev_type = EventType(data["ev_type"])
     confirm_text = (
-        f"📋 Подтвердите создание мероприятия:\n\n"
+        f"📋 <b>Подтвердите создание мероприятия:</b>\n\n"
         f"<b>{data['title']}</b>\n"
         f"Тип: {EVENT_TYPE_LABELS[ev_type]}\n"
         f"Место: {data.get('location') or '—'}\n"
@@ -383,10 +389,10 @@ async def fsm_ev_end(message: Message, state: FSMContext, staff: Staff | None = 
 
     await message.answer(
         confirm_text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Создать", callback_data="ev_confirm"),
-             InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm")],
-        ]),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Создать", callback_data="ev_confirm"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_fsm"),
+        ]]),
         parse_mode="HTML",
     )
     await state.set_state(EventAddFSM.confirm)
@@ -412,45 +418,34 @@ async def fsm_ev_confirm(callback: CallbackQuery, state: FSMContext, staff: Staf
             session_id=active.id if active else None,
             member_ids=data.get("member_ids") or [],
         )
-        # Notify members
         member_tg_ids = [m.staff.telegram_id for m in event.members if m.staff]
 
-    await callback.message.edit_text(
-        f"✅ Мероприятие создано!\n\n{_event_text(event)}", parse_mode="HTML"
-    )
+    await callback.message.edit_text(f"✅ Мероприятие создано!\n\n{_event_text(event)}", parse_mode="HTML")
     await callback.answer()
 
     for tg_id in member_tg_ids:
         try:
-            await callback.bot.send_message(
-                tg_id,
-                f"📅 Вы добавлены в мероприятие!\n\n{_event_text(event)}",
-                parse_mode="HTML",
-            )
+            await callback.bot.send_message(tg_id, f"📅 Вы добавлены в мероприятие!\n\n{_event_text(event)}", parse_mode="HTML")
         except Exception:
             pass
 
 
-# ── /event_edit {id} ──────────────────────────────────────────────────────────
+# ── Редактирование мероприятия ────────────────────────────────────────────────
 
-@router.message(Command("event_edit"))
-async def cmd_event_edit(message: Message, state: FSMContext, staff: Staff | None = None):
+@router.callback_query(F.data.startswith("event_edit_start:"))
+async def cb_event_edit_start(callback: CallbackQuery, state: FSMContext, staff: Staff | None = None):
     if staff is None or staff.role not in _ADMIN_ROLES:
-        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
+        await callback.answer("⛔ Нет прав", show_alert=True)
         return
-    parts = message.text.split()
-    if len(parts) < 2 or not parts[1].isdigit():
-        await message.answer("❌ Формат: /event_edit <id>")
-        return
-    event_id = int(parts[1])
+    event_id = int(callback.data.split(":")[1])
     async with async_session_factory() as session:
         event = await get_event_by_id(session, event_id)
     if not event:
-        await message.answer("❌ Мероприятие не найдено.")
+        await callback.answer("❌ Мероприятие не найдено", show_alert=True)
         return
     await state.update_data(event_id=event_id)
-    await message.answer(
-        f"Редактирование: <b>{event.title}</b>\n\nЧто изменить?",
+    await callback.message.edit_text(
+        f"✏️ <b>{event.title}</b>\n\nЧто изменить?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📝 Название", callback_data="ev_edit:title"),
              InlineKeyboardButton(text="📍 Место", callback_data="ev_edit:location")],
@@ -462,6 +457,7 @@ async def cmd_event_edit(message: Message, state: FSMContext, staff: Staff | Non
         parse_mode="HTML",
     )
     await state.set_state(EventEditFSM.waiting_field)
+    await callback.answer()
 
 
 @router.callback_query(EventEditFSM.waiting_field, F.data.startswith("ev_edit:"))
@@ -517,35 +513,32 @@ async def fsm_ev_edit_value(message: Message, state: FSMContext):
     await message.answer(f"✅ Обновлено!\n\n{_event_text(event)}", parse_mode="HTML")
 
 
-# ── /event_delete {id} ────────────────────────────────────────────────────────
+# ── Удаление мероприятия ──────────────────────────────────────────────────────
 
-@router.message(Command("event_delete"))
-async def cmd_event_delete(message: Message, staff: Staff | None = None):
+@router.callback_query(F.data.startswith("event_del_confirm:"))
+async def cb_event_del_confirm(callback: CallbackQuery, staff: Staff | None = None):
     if staff is None or staff.role not in _ADMIN_ROLES:
-        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
+        await callback.answer("⛔ Нет прав", show_alert=True)
         return
-    parts = message.text.split()
-    if len(parts) < 2 or not parts[1].isdigit():
-        await message.answer("❌ Формат: /event_delete <id>")
-        return
-    event_id = int(parts[1])
+    event_id = int(callback.data.split(":")[1])
     async with async_session_factory() as session:
         event = await get_event_by_id(session, event_id)
     if not event:
-        await message.answer("❌ Мероприятие не найдено.")
+        await callback.answer("❌ Не найдено", show_alert=True)
         return
-    await message.answer(
-        f"Удалить мероприятие <b>{event.title}</b>?",
+    await callback.message.edit_text(
+        f"❗ Удалить мероприятие <b>{event.title}</b>?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Да", callback_data=f"ev_delete_confirm:{event_id}"),
-            InlineKeyboardButton(text="❌ Нет", callback_data="cancel_fsm"),
+            InlineKeyboardButton(text="✅ Да", callback_data=f"event_del:{event_id}"),
+            InlineKeyboardButton(text="❌ Нет", callback_data=f"event_view:{event_id}"),
         ]]),
         parse_mode="HTML",
     )
+    await callback.answer()
 
 
-@router.callback_query(F.data.startswith("ev_delete_confirm:"))
-async def cb_ev_delete_confirm(callback: CallbackQuery, staff: Staff | None = None):
+@router.callback_query(F.data.startswith("event_del:"))
+async def cb_event_del(callback: CallbackQuery, staff: Staff | None = None):
     if staff is None or staff.role not in _ADMIN_ROLES:
         await callback.answer("⛔ Нет прав", show_alert=True)
         return
@@ -553,56 +546,62 @@ async def cb_ev_delete_confirm(callback: CallbackQuery, staff: Staff | None = No
     async with async_session_factory() as session:
         ok = await delete_event(session, event_id)
     if ok:
-        await callback.message.edit_text("✅ Мероприятие удалено.")
+        await callback.message.edit_text("✅ Мероприятие удалено.", reply_markup=calendar_menu())
     else:
         await callback.message.edit_text("❌ Мероприятие не найдено.")
     await callback.answer()
 
 
-# ── /event_copy {id} {new_date} ───────────────────────────────────────────────
+# ── Копирование мероприятия ───────────────────────────────────────────────────
 
-@router.message(Command("event_copy"))
-async def cmd_event_copy(message: Message, staff: Staff | None = None):
+@router.callback_query(F.data.startswith("event_copy_start:"))
+async def cb_event_copy_start(callback: CallbackQuery, state: FSMContext, staff: Staff | None = None):
     if staff is None or staff.role not in _ADMIN_ROLES:
-        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
+        await callback.answer("⛔ Нет прав", show_alert=True)
         return
-    parts = message.text.split()
-    if len(parts) < 3 or not parts[1].isdigit():
-        await message.answer("❌ Формат: /event_copy <id> <ДД.ММ.ГГГГ>")
-        return
-    event_id = int(parts[1])
-    try:
-        new_date = datetime.strptime(parts[2], _D_FMT).date()
-    except ValueError:
-        await message.answer("❌ Формат даты: ДД.ММ.ГГГГ")
-        return
+    event_id = int(callback.data.split(":")[1])
+    await state.update_data(copy_event_id=event_id)
+    await callback.message.answer(
+        "📋 Введите дату для копии (ДД.ММ.ГГГГ):",
+        reply_markup=_cancel_kb,
+    )
+    await state.set_state(EventCopyFSM.waiting_date)
+    await callback.answer()
 
+
+@router.message(EventCopyFSM.waiting_date)
+async def fsm_event_copy_date(message: Message, state: FSMContext):
+    try:
+        from datetime import date as date_type
+        new_date = datetime.strptime(message.text.strip(), _D_FMT).date()
+    except ValueError:
+        await message.answer("❌ Формат: ДД.ММ.ГГГГ", reply_markup=_cancel_kb)
+        return
+    data = await state.get_data()
+    event_id = data["copy_event_id"]
     async with async_session_factory() as session:
         new_event = await copy_event(session, event_id, new_date)
-
+    await state.clear()
     if not new_event:
         await message.answer("❌ Мероприятие не найдено.")
         return
-    await message.answer(f"✅ Мероприятие скопировано!\n\n{_event_text(new_event)}", parse_mode="HTML")
+    await message.answer(f"✅ Скопировано!\n\n{_event_text(new_event)}", parse_mode="HTML")
 
 
-# ── /day_mode_emergency ───────────────────────────────────────────────────────
+# ── Экстренное оповещение ─────────────────────────────────────────────────────
 
 @router.message(Command("day_mode_emergency"))
 async def cmd_day_mode_emergency(message: Message, staff: Staff | None = None):
     if staff is None or staff.role not in _ADMIN_ROLES:
-        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
+        await message.answer("⛔ У вас нет прав.")
         return
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
-        await message.answer("❌ Введите сообщение об изменении режима дня.\nФормат: /day_mode_emergency <текст>")
+        await message.answer("❌ Формат: /day_mode_emergency <текст>")
         return
-    broadcast_text = (
-        f"🚨 <b>ИЗМЕНЕНИЕ РЕЖИМА ДНЯ</b>\n\n{args[1]}"
-    )
+    broadcast_text = f"🚨 <b>ИЗМЕНЕНИЕ РЕЖИМА ДНЯ</b>\n\n{args[1]}"
     async with async_session_factory() as session:
         all_staff = await get_all_active_staff(session)
-
     sent = 0
     for s in all_staff:
         if s.telegram_id == staff.telegram_id:
@@ -612,5 +611,4 @@ async def cmd_day_mode_emergency(message: Message, staff: Staff | None = None):
             sent += 1
         except Exception:
             pass
-
-    await message.answer(f"✅ Оповещение отправлено {sent} сотрудникам.", parse_mode="HTML")
+    await message.answer(f"✅ Оповещение отправлено {sent} сотрудникам.")
